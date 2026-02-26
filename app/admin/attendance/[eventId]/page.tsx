@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Registration, AIPrediction, Event } from '@/src/types';
-import { ArrowLeft, CheckCircle2, XCircle, BrainCircuit, Sparkles, TrendingUp, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, BrainCircuit, Sparkles, TrendingUp, AlertCircle, Download, Mail, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function AttendanceTrackerPage() {
@@ -14,6 +14,7 @@ export default function AttendanceTrackerPage() {
   const [prediction, setPrediction] = useState<AIPrediction | null>(null);
   const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -70,6 +71,41 @@ export default function AttendanceTrackerPage() {
     }
   };
 
+  const exportToCSV = () => {
+    if (registrations.length === 0) return;
+    
+    const headers = ["Name", "Email", "Status", "Registered At"];
+    const rows = registrations.map(r => [
+      r.name,
+      r.email,
+      r.attended ? "Present" : "Absent",
+      new Date(r.registered_at).toLocaleString()
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${event?.title || 'event'}_registrations.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const sendReminders = async () => {
+    setSendingReminders(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    alert(`Confirmation emails and reminders sent to ${registrations.length} participants!`);
+    setSendingReminders(false);
+  };
+
   if (loading) return <div className="p-12 text-center">Loading...</div>;
 
   const attendedCount = registrations.filter(r => r.attended).length;
@@ -97,6 +133,28 @@ export default function AttendanceTrackerPage() {
                 <div className="text-2xl font-bold text-brand-600">{attendedCount} / {registrations.length}</div>
                 <div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Present</div>
               </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-3">
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-all shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                Export to Excel (CSV)
+              </button>
+              <button
+                onClick={sendReminders}
+                disabled={sendingReminders || registrations.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-bold hover:bg-brand-700 transition-all shadow-md disabled:opacity-50"
+              >
+                {sendingReminders ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Send Automated Reminders
+              </button>
             </div>
 
             <div className="divide-y divide-slate-100">

@@ -39,6 +39,13 @@ export async function GET() {
       FROM events e 
       LEFT JOIN registrations r ON e.id = r.event_id 
       GROUP BY e.id
+    `).all(),
+    registrationsByDepartment: db.prepare(`
+      SELECT u.department as name, COUNT(r.id) as value
+      FROM registrations r
+      JOIN users u ON r.user_id = u.id
+      WHERE u.department IS NOT NULL
+      GROUP BY u.department
     `).all()
   };
   

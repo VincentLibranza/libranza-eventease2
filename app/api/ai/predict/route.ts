@@ -26,6 +26,13 @@ export async function POST(req: Request) {
   const { eventId } = await req.json();
   const event: any = db.prepare("SELECT * FROM events WHERE id = ?").get(eventId);
   const regs = db.prepare("SELECT COUNT(*) as count FROM registrations WHERE event_id = ?").get(eventId) as any;
+  const deptStats = db.prepare(`
+    SELECT u.department, COUNT(r.id) as count
+    FROM registrations r
+    JOIN users u ON r.user_id = u.id
+    WHERE r.event_id = ?
+    GROUP BY u.department
+  `).all(eventId);
   
   if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
@@ -39,6 +46,7 @@ export async function POST(req: Request) {
       Current Registrations: ${regs.count}
       Date: ${event.date}
       Location: ${event.location}
+      Department Distribution: ${JSON.stringify(deptStats)}
 
       Return a JSON object with:
       - predicted_attendance_count (number)

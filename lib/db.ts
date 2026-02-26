@@ -9,6 +9,7 @@ db.exec(`
     email TEXT UNIQUE,
     password TEXT,
     name TEXT,
+    department TEXT,
     role TEXT DEFAULT 'user'
   );
 
@@ -20,6 +21,7 @@ db.exec(`
     location TEXT,
     capacity INTEGER,
     category TEXT,
+    status TEXT DEFAULT 'published',
     created_by INTEGER,
     FOREIGN KEY(created_by) REFERENCES users(id)
   );

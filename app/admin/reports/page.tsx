@@ -111,6 +111,27 @@ export default function ReportsPage() {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {/* Department Trends */}
+        <div className="bg-white p-8 rounded-3xl card-shadow border border-slate-100 lg:col-span-2">
+          <div className="flex items-center gap-2 mb-8">
+            <Users className="w-5 h-5 text-slate-400" />
+            <h2 className="text-xl font-bold text-slate-900">Participant Trend Analysis (by Department)</h2>
+          </div>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.registrationsByDepartment} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} width={150} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                />
+                <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
     </div>
   );
