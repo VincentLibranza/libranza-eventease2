@@ -1,0 +1,1113 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  LayoutDashboard, 
+  Calendar, 
+  Users, 
+  CheckCircle, 
+  Plus, 
+  Search, 
+  MessageSquare, 
+  TrendingUp,
+  ChevronRight,
+  QrCode,
+  FileText,
+  BarChart3,
+  Loader2,
+  Download,
+  Brain,
+  Trash2,
+  X,
+  Mail,
+  MapPin,
+  Clock,
+  Filter
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Event, Participant, Stats } from './types';
+import { getChatbotResponse, predictAttendance, analyzeTrends } from './services/geminiService';
+import { QRCodeSVG } from 'qrcode.react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  LineChart, 
+  Line,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'events' | 'register' | 'attendance' | 'participants' | 'ai'>('dashboard');
+  const [events, setEvents] = useState<Event[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [aiInsights, setAiInsights] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [eventsRes, statsRes, participantsRes] = await Promise.all([
+        fetch('/api/events'),
+        fetch('/api/stats'),
+        fetch('/api/participants')
+      ]);
+      const eventsData = await eventsRes.json();
+      const statsData = await statsRes.json();
+      const participantsData = await participantsRes.json();
+      setEvents(eventsData);
+      setStats(statsData);
+      setParticipants(participantsData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF() as any;
+    doc.text('EventEase - Participant Report', 14, 15);
+    doc.autoTable({
+      startY: 20,
+      head: [['Name', 'Email', 'Department', 'Event', 'Status']],
+      body: participants.map(p => [p.name, p.email, p.department, (p as any).event_title, p.status]),
+    });
+    doc.save('participants-report.pdf');
+  };
+
+  const handleExportExcel = () => {
+    const worksheet = XLSX.utils.json_to_sheet(participants);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
+    XLSX.writeFile(workbook, "participants-report.xlsx");
+  };
+
+  const handleAnalyzeTrends = async () => {
+    if (!stats) return;
+    setIsAnalyzing(true);
+    try {
+      const insights = await analyzeTrends(stats);
+      setAiInsights(insights);
+      setActiveTab('ai');
+    } catch (error) {
+      console.error('AI Analysis failed:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleDeleteEvent = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this event? All registrations will be lost.')) return;
+    try {
+      await fetch(`/api/events/${id}`, { method: 'DELETE' });
+      fetchData();
+    } catch (error) {
+      console.error('Delete failed:', error);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans">
+      {/* Sidebar */}
+      <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-20 hidden md:block">
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-8">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+              <Calendar className="text-white w-5 h-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-indigo-600">EventEase</h1>
+          </div>
+
+          <nav className="space-y-1">
+            <NavItem 
+              icon={<LayoutDashboard size={20} />} 
+              label="Dashboard" 
+              active={activeTab === 'dashboard'} 
+              onClick={() => setActiveTab('dashboard')} 
+            />
+            <NavItem 
+              icon={<Calendar size={20} />} 
+              label="Events" 
+              active={activeTab === 'events'} 
+              onClick={() => setActiveTab('events')} 
+            />
+            <NavItem 
+              icon={<Users size={20} />} 
+              label="Participants" 
+              active={activeTab === 'participants'} 
+              onClick={() => setActiveTab('participants')} 
+            />
+            <NavItem 
+              icon={<CheckCircle size={20} />} 
+              label="Attendance" 
+              active={activeTab === 'attendance'} 
+              onClick={() => setActiveTab('attendance')} 
+            />
+            <NavItem 
+              icon={<Plus size={20} />} 
+              label="Registration" 
+              active={activeTab === 'register'} 
+              onClick={() => setActiveTab('register')} 
+            />
+            <NavItem 
+              icon={<Brain size={20} />} 
+              label="AI Insights" 
+              active={activeTab === 'ai'} 
+              onClick={() => setActiveTab('ai')} 
+            />
+          </nav>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="md:ml-64 p-4 md:p-8">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div>
+            <h2 className="text-2xl font-bold capitalize">{activeTab}</h2>
+            <p className="text-slate-500 text-sm">Manage your event ecosystem efficiently.</p>
+          </div>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+            <button 
+              onClick={handleAnalyzeTrends}
+              disabled={isAnalyzing}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-medium hover:bg-indigo-100 transition-colors disabled:opacity-50"
+            >
+              {isAnalyzing ? <Loader2 className="animate-spin" size={18} /> : <Brain size={18} />}
+              <span className="hidden sm:inline">AI Insights</span>
+            </button>
+          </div>
+        </header>
+
+        <AnimatePresence mode="wait">
+          {loading ? (
+            <motion.div 
+              key="loader"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center justify-center h-64"
+            >
+              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+            </motion.div>
+          ) : (
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {activeTab === 'dashboard' && <Dashboard stats={stats} events={events} onAnalyze={handleAnalyzeTrends} />}
+              {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} />}
+              {activeTab === 'participants' && <ParticipantsTab participants={participants} onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />}
+              {activeTab === 'register' && <RegistrationForm events={events} onRefresh={fetchData} />}
+              {activeTab === 'attendance' && <AttendanceTracker events={events} onRefresh={fetchData} />}
+              {activeTab === 'ai' && <AITab insights={aiInsights} stats={stats} />}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* Chatbot Toggle */}
+      <button 
+        onClick={() => setIsChatOpen(!isChatOpen)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-50"
+      >
+        <MessageSquare size={24} />
+      </button>
+
+      {/* Chatbot Window */}
+      <AnimatePresence>
+        {isChatOpen && (
+          <ChatbotWindow onClose={() => setIsChatOpen(false)} events={events} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ParticipantsTab({ participants, onExportPDF, onExportExcel }: { participants: Participant[], onExportPDF: () => void, onExportExcel: () => void }) {
+  const [filter, setFilter] = useState('');
+  
+  const filtered = participants.filter(p => 
+    p.name.toLowerCase().includes(filter.toLowerCase()) || 
+    p.email.toLowerCase().includes(filter.toLowerCase()) ||
+    p.department.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <input 
+            type="text" 
+            placeholder="Filter participants..." 
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button onClick={onExportPDF} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors">
+            <FileText size={18} />
+            <span>PDF</span>
+          </button>
+          <button onClick={onExportExcel} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors">
+            <Download size={18} />
+            <span>Excel</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+              <tr>
+                <th className="px-6 py-4">Participant</th>
+                <th className="px-6 py-4">Department</th>
+                <th className="px-6 py-4">Event</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(p => (
+                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-slate-900">{p.name}</div>
+                    <div className="text-xs text-slate-500">{p.email}</div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-600">{p.department}</td>
+                  <td className="px-6 py-4 text-sm text-slate-600">{(p as any).event_title}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      p.status === 'attended' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <button 
+                      onClick={() => alert(`Reminder sent to ${p.email}`)}
+                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Send Reminder"
+                    >
+                      <Mail size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                    No participants found matching your search.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AITab({ insights, stats }: { insights: any, stats: Stats | null }) {
+  if (!insights) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+        <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 mb-4">
+          <Brain size={40} />
+        </div>
+        <h3 className="text-xl font-bold text-slate-900">AI Insights Not Generated</h3>
+        <p className="text-slate-500 max-w-md">
+          Click the "AI Insights" button in the header to analyze your event data and generate trends.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6"
+        >
+          <div className="flex items-center gap-3 text-indigo-600">
+            <TrendingUp size={24} />
+            <h3 className="text-xl font-bold">Trend Analysis</h3>
+          </div>
+          <p className="text-slate-600 leading-relaxed">
+            {insights.trends}
+          </p>
+          
+          <div className="space-y-4">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2">
+              <Users size={18} className="text-indigo-500" />
+              Most Active Departments
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {insights.activeDepartments.map((dept: string, i: number) => (
+                <span key={i} className="px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-sm font-medium border border-slate-100">
+                  {dept}
+                </span>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="bg-indigo-600 p-8 rounded-3xl text-white shadow-xl shadow-indigo-100 space-y-6"
+        >
+          <div className="flex items-center gap-3">
+            <Brain size={24} />
+            <h3 className="text-xl font-bold">AI Recommendations</h3>
+          </div>
+          <ul className="space-y-4">
+            {insights.recommendations.map((rec: string, i: number) => (
+              <motion.li 
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className="flex gap-3 bg-white/10 p-4 rounded-2xl border border-white/10"
+              >
+                <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                  {i + 1}
+                </div>
+                <span className="text-indigo-50">{rec}</span>
+              </motion.li>
+            ))}
+          </ul>
+        </motion.div>
+      </div>
+
+      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="text-xl font-bold mb-8 flex items-center gap-3">
+          <BarChart3 size={24} className="text-indigo-600" />
+          Attendance Performance
+        </h3>
+        <div className="h-[400px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats?.eventStats}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+              <XAxis dataKey="title" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#FFF', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                cursor={{ fill: '#F1F5F9' }}
+              />
+              <Bar dataKey="registrations" name="Registrations" fill="#818CF8" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="attendance" name="Attendance" fill="#4F46E5" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+        active 
+          ? 'bg-indigo-50 text-indigo-600 font-semibold' 
+          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function Dashboard({ stats, events, onAnalyze }: { stats: Stats | null, events: Event[], onAnalyze: () => void }) {
+  const [prediction, setPrediction] = useState<{ predictedCount: number, reasoning: string } | null>(null);
+  const [isPredicting, setIsPredicting] = useState(false);
+
+  const handlePredict = async () => {
+    if (events.length === 0) return;
+    setIsPredicting(true);
+    try {
+      const nextEvent = { title: "Next Seminar", date: new Date().toISOString(), location: "Main Hall" };
+      const res = await predictAttendance(nextEvent, events.slice(0, 5));
+      setPrediction(res);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard label="Total Events" value={stats?.totalEvents || 0} icon={<Calendar className="text-blue-600" />} color="bg-blue-50" />
+        <StatCard label="Total Participants" value={stats?.totalParticipants || 0} icon={<Users className="text-emerald-600" />} color="bg-emerald-50" />
+        <StatCard label="Attendance Rate" value={`${stats?.totalParticipants ? Math.round((stats.totalAttendance / stats.totalParticipants) * 100) : 0}%`} icon={<CheckCircle className="text-amber-600" />} color="bg-amber-50" />
+        <StatCard label="Active Depts" value={stats?.departmentStats.length || 0} icon={<TrendingUp className="text-indigo-600" />} color="bg-indigo-50" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg">Department Distribution</h3>
+              <BarChart3 size={20} className="text-slate-400" />
+            </div>
+            <div className="space-y-4">
+              {stats?.departmentStats.slice(0, 5).map((dept, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium text-slate-700">{dept.department}</span>
+                    <span className="text-slate-500">{dept.count} participants</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(dept.count / (stats.totalParticipants || 1)) * 100}%` }}
+                      className="h-full bg-indigo-500"
+                    />
+                  </div>
+                </div>
+              ))}
+              {(!stats?.departmentStats || stats.departmentStats.length === 0) && (
+                <p className="text-center text-slate-400 py-8">No data available yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-lg shadow-indigo-100 relative overflow-hidden">
+              <div className="relative z-10">
+                <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                  <TrendingUp size={20} />
+                  Attendance Prediction
+                </h3>
+                <p className="text-indigo-100 text-xs mb-6">
+                  AI-powered insights for your next event based on historical data.
+                </p>
+                
+                {prediction ? (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20"
+                  >
+                    <div className="flex items-end gap-2 mb-1">
+                      <span className="text-2xl font-bold">{prediction.predictedCount}</span>
+                      <span className="text-indigo-200 text-xs pb-1">Predicted</span>
+                    </div>
+                    <p className="text-xs text-indigo-50 italic line-clamp-2">"{prediction.reasoning}"</p>
+                  </motion.div>
+                ) : (
+                  <button 
+                    onClick={handlePredict}
+                    disabled={isPredicting || events.length === 0}
+                    className="w-full py-3 bg-white text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isPredicting ? <Loader2 className="animate-spin" size={18} /> : <TrendingUp size={18} />}
+                    Predict Next
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-slate-900">
+                  <Brain size={20} className="text-indigo-600" />
+                  Deep Trend Analysis
+                </h3>
+                <p className="text-slate-500 text-xs mb-6">
+                  Analyze all participant data to find hidden patterns and recommendations.
+                </p>
+              </div>
+              <button 
+                onClick={onAnalyze}
+                className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+              >
+                <BarChart3 size={18} />
+                Full AI Report
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <h3 className="font-bold text-lg mb-6">Upcoming Events</h3>
+          <div className="space-y-4">
+            {events.slice(0, 5).map((event) => (
+              <div key={event.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group">
+                <div className="w-12 h-12 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                  <span className="text-[10px] font-bold uppercase">{new Date(event.date).toLocaleString('default', { month: 'short' })}</span>
+                  <span className="text-lg font-bold leading-none">{new Date(event.date).getDate()}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-sm truncate">{event.title}</h4>
+                  <p className="text-[10px] text-slate-500 truncate">{event.location}</p>
+                </div>
+                <ChevronRight size={14} className="text-slate-300" />
+              </div>
+            ))}
+            {events.length === 0 && (
+              <p className="text-center text-slate-400 py-8">No events scheduled.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon, color }: { label: string, value: string | number, icon: React.ReactNode, color: string }) {
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center mb-4`}>
+        {icon}
+      </div>
+      <p className="text-slate-500 text-sm font-medium">{label}</p>
+      <h4 className="text-2xl font-bold mt-1">{value}</h4>
+    </div>
+  );
+}
+
+function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefresh: () => void, onDelete: (id: number) => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({ title: '', description: '', date: '', location: '', capacity: 100 });
+  const [qrEvent, setQrEvent] = useState<Event | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+    setShowForm(false);
+    onRefresh();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold">All Events</h3>
+        <button 
+          onClick={() => setShowForm(true)}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
+        >
+          <Plus size={18} />
+          <span>Create Event</span>
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold">Create New Event</h3>
+              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Event Title</label>
+                <input 
+                  required
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.title}
+                  onChange={e => setFormData({...formData, title: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                <input 
+                  required
+                  type="datetime-local"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.date}
+                  onChange={e => setFormData({...formData, date: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                <input 
+                  required
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.location}
+                  onChange={e => setFormData({...formData, location: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Capacity</label>
+                <input 
+                  type="number"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.capacity}
+                  onChange={e => setFormData({...formData, capacity: parseInt(e.target.value)})}
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {qrEvent && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl p-8 w-full max-w-xs shadow-2xl text-center"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold">Event QR Code</h3>
+              <button onClick={() => setQrEvent(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="bg-slate-50 p-6 rounded-xl flex justify-center mb-6">
+              <QRCodeSVG value={`eventease://event/${qrEvent.id}`} size={200} />
+            </div>
+            <p className="font-bold text-slate-900 mb-1">{qrEvent.title}</p>
+            <p className="text-sm text-slate-500 mb-6">{new Date(qrEvent.date).toLocaleDateString()}</p>
+            <button 
+              onClick={() => setQrEvent(null)}
+              className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold"
+            >
+              Close
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {events.map(event => (
+          <div key={event.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group hover:border-indigo-300 transition-all">
+            <div className="h-32 bg-slate-100 relative overflow-hidden">
+              <img 
+                src={`https://picsum.photos/seed/${event.id}/400/200`} 
+                alt={event.title}
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute top-4 right-4 flex gap-2">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setQrEvent(event); }}
+                  className="p-1.5 bg-white/90 backdrop-blur text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors shadow-sm"
+                  title="Show QR"
+                >
+                  <QrCode size={14} />
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDelete(event.id); }}
+                  className="p-1.5 bg-white/90 backdrop-blur text-red-500 rounded-full hover:bg-red-50 transition-colors shadow-sm"
+                  title="Delete Event"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div className="absolute bottom-4 left-4">
+                <div className="bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold text-indigo-600 shadow-sm flex items-center gap-1">
+                  <MapPin size={10} />
+                  {event.location}
+                </div>
+              </div>
+            </div>
+            <div className="p-6">
+              <h4 className="text-lg font-bold mb-2 group-hover:text-indigo-600 transition-colors">{event.title}</h4>
+              <p className="text-slate-500 text-sm mb-4 line-clamp-2">{event.description || 'No description provided.'}</p>
+              <div className="flex items-center justify-between text-sm text-slate-400">
+                <div className="flex items-center gap-2">
+                  <Calendar size={14} />
+                  <span>{new Date(event.date).toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users size={14} />
+                  <span>Max {event.capacity}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: () => void }) {
+  const [formData, setFormData] = useState({ event_id: '', name: '', email: '', department: '' });
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+    if (res.ok) {
+      setSuccess(true);
+      setFormData({ event_id: '', name: '', email: '', department: '' });
+      onRefresh();
+      setTimeout(() => setSuccess(false), 3000);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="text-center mb-8">
+        <h3 className="text-2xl font-bold mb-2">Event Registration</h3>
+        <p className="text-slate-500">Fill out the form below to register for an upcoming event.</p>
+      </div>
+
+      {success && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 bg-emerald-50 text-emerald-700 rounded-xl flex items-center gap-3"
+        >
+          <CheckCircle size={20} />
+          <span className="font-medium">Registration successful! Check your email for confirmation.</span>
+        </motion.div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Select Event</label>
+          <select 
+            required
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50"
+            value={formData.event_id}
+            onChange={e => setFormData({...formData, event_id: e.target.value})}
+          >
+            <option value="">Choose an event...</option>
+            {events.map(e => (
+              <option key={e.id} value={e.id}>{e.title} - {new Date(e.date).toLocaleDateString()}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+            <input 
+              required
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder="John Doe"
+              value={formData.name}
+              onChange={e => setFormData({...formData, name: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
+            <input 
+              required
+              type="email"
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder="john@example.com"
+              value={formData.email}
+              onChange={e => setFormData({...formData, email: e.target.value})}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Department / Organization</label>
+          <input 
+            required
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+            placeholder="Computer Science"
+            value={formData.department}
+            onChange={e => setFormData({...formData, department: e.target.value})}
+          />
+        </div>
+
+        <button 
+          type="submit"
+          className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+        >
+          Register Now
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: () => void }) {
+  const [selectedEventId, setSelectedEventId] = useState('');
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (selectedEventId) {
+      fetchParticipants();
+    }
+  }, [selectedEventId]);
+
+  const fetchParticipants = async () => {
+    setLoading(true);
+    const res = await fetch(`/api/events/${selectedEventId}`);
+    const data = await res.json();
+    setParticipants(data.participants || []);
+    setLoading(false);
+  };
+
+  const handleCheckIn = async (participantId: number) => {
+    const res = await fetch('/api/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participant_id: participantId, event_id: selectedEventId })
+    });
+    if (res.ok) {
+      onRefresh();
+      // Simple visual feedback
+      setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
+    }
+  };
+
+  const handleExport = () => {
+    if (participants.length === 0) return;
+    const headers = ['Name', 'Email', 'Department', 'Status', 'Registered At'];
+    const rows = participants.map(p => [p.name, p.email, p.department, p.status, p.registered_at]);
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `event_${selectedEventId}_report.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <label className="block text-sm font-medium text-slate-700 mb-3">Select Event to Track Attendance</label>
+        <div className="flex gap-4">
+          <select 
+            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+            value={selectedEventId}
+            onChange={e => setSelectedEventId(e.target.value)}
+          >
+            <option value="">Choose an event...</option>
+            {events.map(e => (
+              <option key={e.id} value={e.id}>{e.title}</option>
+            ))}
+          </select>
+          <button className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2">
+            <QrCode size={18} />
+            <span>Scan QR</span>
+          </button>
+        </div>
+      </div>
+
+      {selectedEventId && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-bottom border-slate-100 flex justify-between items-center">
+            <h4 className="font-bold">Participant List</h4>
+            <button 
+              onClick={handleExport}
+              className="text-indigo-600 text-sm font-medium flex items-center gap-1 hover:underline"
+            >
+              <FileText size={16} />
+              Export Report
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="px-6 py-4">Name</th>
+                  <th className="px-6 py-4">Department</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {participants.map(p => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-medium">{p.name}</div>
+                      <div className="text-xs text-slate-400">{p.email}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{p.department}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                        p.status === 'attended' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {p.status === 'attended' ? 'Present' : 'Registered'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <button 
+                        disabled={p.status === 'attended'}
+                        onClick={() => handleCheckIn(p.id)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                          p.status === 'attended' 
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
+                      >
+                        {p.status === 'attended' ? 'Checked In' : 'Check In'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {participants.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                      No participants registered for this event yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatbotWindow({ onClose, events }: { onClose: () => void, events: Event[] }) {
+  const [messages, setMessages] = useState<{ role: 'user' | 'bot', text: string }[]>([
+    { role: 'bot', text: 'Hello! I am EventEase Assistant. How can I help you today?' }
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    
+    const userMsg = input;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setIsTyping(true);
+
+    try {
+      const context = `Upcoming events: ${events.map(e => `${e.title} on ${e.date}`).join(', ')}`;
+      const botResponse = await getChatbotResponse(userMsg, context);
+      setMessages(prev => [...prev, { role: 'bot', text: botResponse || "I'm sorry, I couldn't process that." }]);
+    } catch (error) {
+      console.error('Chat error:', error);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.95 }}
+      className="fixed bottom-24 right-6 w-80 md:w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden"
+    >
+      <div className="p-4 bg-indigo-600 text-white flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={20} />
+          <span className="font-bold">EventEase AI</span>
+        </div>
+        <button onClick={onClose} className="hover:bg-white/20 p-1 rounded transition-colors">
+          <ChevronRight className="rotate-90" size={20} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+              msg.role === 'user' 
+                ? 'bg-indigo-600 text-white rounded-tr-none' 
+                : 'bg-slate-100 text-slate-800 rounded-tl-none'
+            }`}>
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        {isTyping && (
+          <div className="flex justify-start">
+            <div className="bg-slate-100 p-3 rounded-2xl rounded-tl-none flex gap-1">
+              <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" />
+              <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-slate-100 flex gap-2">
+        <input 
+          className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+          placeholder="Type a message..."
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyPress={e => e.key === 'Enter' && handleSend()}
+        />
+        <button 
+          onClick={handleSend}
+          className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
+    </motion.div>
+  );
+}

@@ -1,10 +1,3 @@
-export interface User {
-  id: number;
-  email: string;
-  name: string;
-  role: 'admin' | 'user';
-}
-
 export interface Event {
   id: number;
   title: string;
@@ -12,26 +5,31 @@ export interface Event {
   date: string;
   location: string;
   capacity: number;
-  category: string;
-  registration_count: number;
+  created_at: string;
+  participants?: Participant[];
 }
 
-export interface Registration {
+export interface Participant {
   id: number;
-  user_id: number;
   event_id: number;
+  name: string;
+  email: string;
+  department: string;
+  status: string;
   registered_at: string;
-  attended: number;
-  name?: string;
-  email?: string;
-  title?: string;
-  date?: string;
-  location?: string;
 }
 
-export interface AIPrediction {
-  predicted_attendance_count: number;
-  confidence_score: number;
-  reasoning: string;
-  suggestions: string[];
+export interface Attendance {
+  id: number;
+  participant_id: number;
+  event_id: number;
+  attended_at: string;
+}
+
+export interface Stats {
+  totalEvents: number;
+  totalParticipants: number;
+  totalAttendance: number;
+  departmentStats: { department: string; count: number }[];
+  eventStats: { title: string; date: string; registrations: number; attendance: number }[];
 }

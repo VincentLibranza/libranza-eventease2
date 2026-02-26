@@ -1,1 +1,0 @@
-# Public assets go here

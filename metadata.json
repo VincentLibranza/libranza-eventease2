@@ -1,5 +1,7 @@
 {
   "name": "EventEase",
-  "description": "A comprehensive event management system with AI-powered attendance prediction, registration, and tracking.",
-  "requestFramePermissions": []
+  "description": "A comprehensive event registration and attendance management system with AI-powered insights and digital tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ]
 }
