@@ -21,7 +21,9 @@ import {
   MapPin,
   Clock,
   Filter,
-  RefreshCw
+  RefreshCw,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Event, Participant, Stats } from './types';
@@ -872,6 +874,7 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
   const [qrEvent, setQrEvent] = useState<Event | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1043,8 +1046,30 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
             </div>
             <p className="font-bold text-slate-900 mb-1">{qrEvent.title}</p>
             <p className="text-sm text-slate-500 mb-6">{new Date(qrEvent.date).toLocaleDateString()}</p>
+            
+            <div className="mb-6">
+              <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 mb-2">
+                <input 
+                  readOnly 
+                  value={`${window.location.origin}?register=${qrEvent.id}`}
+                  className="bg-transparent text-[10px] text-slate-500 outline-none flex-1 truncate"
+                />
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}?register=${qrEvent.id}`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+              {copied && <p className="text-[10px] text-emerald-600 font-medium animate-pulse">Link copied to clipboard!</p>}
+            </div>
+
             <button 
-              onClick={() => setQrEvent(null)}
+              onClick={() => { setQrEvent(null); setCopied(false); }}
               className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold"
             >
               Close
