@@ -61,6 +61,15 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [publicRegisterId, setPublicRegisterId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const registerId = params.get('register');
+    if (registerId) {
+      setPublicRegisterId(registerId);
+    }
+  }, []);
 
   useEffect(() => {
     if (token) {
@@ -119,6 +128,13 @@ export default function App() {
     localStorage.removeItem('eventease_user');
     localStorage.removeItem('eventease_token');
   };
+
+  if (publicRegisterId) {
+    return <PublicRegistrationPage eventId={publicRegisterId} onBack={() => {
+      setPublicRegisterId(null);
+      window.history.pushState({}, '', window.location.pathname);
+    }} />;
+  }
 
   if (!token) {
     return <AuthPage onLogin={handleLogin} />;
@@ -313,6 +329,163 @@ export default function App() {
           <ChatbotWindow onClose={() => setIsChatOpen(false)} events={events} />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function PublicRegistrationPage({ eventId, onBack }: { eventId: string, onBack: () => void }) {
+  const [event, setEvent] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({ name: '', email: '', department: '' });
+
+  useEffect(() => {
+    fetch(`/api/events/${eventId}`)
+      .then(res => res.json())
+      .then(data => {
+        setEvent(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, [eventId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, event_id: eventId })
+      });
+      if (res.ok) {
+        setSuccess(true);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Registration failed');
+      }
+    } catch (err) {
+      setError('A connection error occurred');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+    </div>
+  );
+
+  if (!event || event.error) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
+        <X className="w-12 h-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-bold mb-2">Event Not Found</h2>
+        <p className="text-slate-500 mb-6">The event you are looking for does not exist or has been removed.</p>
+        <button onClick={onBack} className="text-indigo-600 font-bold hover:underline">Back to Home</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 flex items-center justify-center">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }} 
+        animate={{ opacity: 1, scale: 1 }} 
+        className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-slate-200"
+      >
+        {success ? (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">You're Registered!</h2>
+            <p className="text-slate-500 mb-6">We've successfully registered you for <strong>{event.title}</strong>. See you there!</p>
+            <button onClick={onBack} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100">
+              Done
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="text-center mb-8">
+              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <Calendar size={24} />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">{event.title}</h2>
+              <div className="mt-4 space-y-2">
+                <p className="text-slate-500 text-sm flex items-center justify-center gap-2">
+                  <Clock size={14} /> {new Date(event.date).toLocaleString()}
+                </p>
+                <p className="text-slate-500 text-sm flex items-center justify-center gap-2">
+                  <MapPin size={14} /> {event.location}
+                </p>
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">Full Name</label>
+                <input 
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter your name"
+                  value={formData.name}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">Email Address</label>
+                <input 
+                  required
+                  type="email"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="your@email.com"
+                  value={formData.email}
+                  onChange={e => setFormData({...formData, email: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">Department</label>
+                <input 
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. Marketing, IT"
+                  value={formData.department}
+                  onChange={e => setFormData({...formData, department: e.target.value})}
+                />
+              </div>
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+              >
+                {submitting && <Loader2 className="animate-spin" size={20} />}
+                {submitting ? 'Registering...' : 'Complete Registration'}
+              </button>
+              <button 
+                type="button"
+                onClick={onBack}
+                className="w-full py-2 text-slate-400 text-sm font-medium hover:text-slate-600"
+              >
+                Cancel
+              </button>
+            </form>
+          </>
+        )}
+      </motion.div>
     </div>
   );
 }
@@ -955,7 +1128,12 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
               </button>
             </div>
             <div className="bg-slate-50 p-6 rounded-xl flex justify-center mb-6">
-              <QRCodeSVG value={`eventease://event/${qrEvent.id}`} size={200} />
+              <QRCodeSVG 
+                value={`${window.location.origin}?register=${qrEvent.id}`} 
+                size={200} 
+                level="H"
+                includeMargin={true}
+              />
             </div>
             <p className="font-bold text-slate-900 mb-1">{qrEvent.title}</p>
             <p className="text-sm text-slate-500 mb-6">{new Date(qrEvent.date).toLocaleDateString()}</p>
