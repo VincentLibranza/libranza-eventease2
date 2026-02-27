@@ -20,6 +20,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'eventease-secret-key-123';
 let dbUrl = process.env.TURSO_DATABASE_URL;
 const dbToken = process.env.TURSO_AUTH_TOKEN;
 
+// Safety Check: If URL starts with 'eyJ', it's actually a token. Swapped!
+if (dbUrl && dbUrl.startsWith('eyJ')) {
+  console.error("ERROR: TURSO_DATABASE_URL contains a JWT token. Swapping to local fallback.");
+  dbUrl = undefined;
+}
+
+// Final URL resolution
 const localDbPath = isVercel ? "/tmp/eventease.db" : path.join(__dirname, "..", "eventease.db");
 const finalUrl = dbUrl || `file:${localDbPath}`;
 
@@ -30,8 +37,11 @@ const db = createClient({
 
 // Initialize Database
 async function initDb() {
+  console.log("Initializing database...");
   try {
+    // Enable foreign keys
     await db.execute("PRAGMA foreign_keys = ON");
+    console.log("Foreign keys enabled.");
 
     await db.batch([
       `CREATE TABLE IF NOT EXISTS users (
@@ -71,10 +81,15 @@ async function initDb() {
         FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
       );`
     ], "write");
+    console.log("Database tables verified/created.");
 
+    // Migration: Add user_id to events if it doesn't exist
     try {
       await db.execute("ALTER TABLE events ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
-    } catch (e) {}
+      console.log("Migration: user_id added to events.");
+    } catch (e) {
+      // Column might already exist
+    }
   } catch (error) {
     console.error("Database initialization error:", error);
   }
@@ -96,6 +111,7 @@ const authenticateToken = async (req: any, res: any, next: any) => {
     if (err) return res.status(403).json({ error: "Forbidden" });
     
     try {
+      // Verify user still exists in the database (handles stale sessions after DB resets)
       const result = await db.execute({
         sql: "SELECT id FROM users WHERE id = ?",
         args: [decoded.id]
@@ -127,10 +143,11 @@ app.post("/api/auth/signup", async (req, res) => {
     const token = jwt.sign({ id: userId, email, name }, JWT_SECRET);
     res.json({ token, user: { id: userId, name, email } });
   } catch (error: any) {
+    console.error("Signup error:", error);
     if (error.message?.includes("UNIQUE constraint failed")) {
       return res.status(400).json({ error: "Email already exists" });
     }
-    res.status(500).json({ error: `Signup failed: ${error.message}` });
+    res.status(500).json({ error: `Signup failed: ${error.message || 'Unknown error'}` });
   }
 });
 
@@ -148,47 +165,148 @@ app.post("/api/auth/login", async (req, res) => {
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
   } catch (error: any) {
-    res.status(500).json({ error: `Login failed: ${error.message}` });
+    console.error("Login error:", error);
+    res.status(500).json({ error: `Login failed: ${error.message || 'Unknown error'}` });
   }
 });
 
-// API Routes
+// API Routes (Protected)
 app.get("/api/events", authenticateToken, async (req: any, res) => {
-  const result = await db.execute({
-    sql: "SELECT * FROM events WHERE user_id = ? ORDER BY date DESC",
-    args: [req.user.id]
-  });
-  res.json(result.rows);
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM events WHERE user_id = ? ORDER BY date DESC",
+      args: [req.user.id]
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch events" });
+  }
 });
 
 app.post("/api/events", authenticateToken, async (req: any, res) => {
   const { title, description, date, location, capacity } = req.body;
+  console.log("Creating event for user:", req.user.id, { title, date });
   try {
     const result = await db.execute({
       sql: "INSERT INTO events (user_id, title, description, date, location, capacity) VALUES (?, ?, ?, ?, ?, ?)",
       args: [req.user.id, title, description, date, location, capacity]
     });
+    console.log("Event created successfully, ID:", result.lastInsertRowid);
     res.json({ id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: `Failed to create event: ${error.message}` });
+    console.error("Failed to create event:", error);
+    res.status(500).json({ error: `Failed to create event: ${error.message || 'Unknown error'}` });
+  }
+});
+
+app.get("/api/events/:id", async (req, res) => {
+  try {
+    const eventResult = await db.execute({
+      sql: "SELECT * FROM events WHERE id = ?",
+      args: [req.params.id]
+    });
+    if (eventResult.rows.length === 0) return res.status(404).json({ error: "Event not found" });
+    
+    const participantsResult = await db.execute({
+      sql: "SELECT * FROM participants WHERE event_id = ?",
+      args: [req.params.id]
+    });
+    res.json({ ...eventResult.rows[0], participants: participantsResult.rows });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch event details" });
+  }
+});
+
+app.post("/api/register", async (req, res) => {
+  const { event_id, name, email, department } = req.body;
+  try {
+    const result = await db.execute({
+      sql: "INSERT INTO participants (event_id, name, email, department) VALUES (?, ?, ?, ?)",
+      args: [event_id, name, email, department]
+    });
+    res.json({ id: Number(result.lastInsertRowid) });
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+
+app.post("/api/attendance", async (req, res) => {
+  const { participant_id, event_id } = req.body;
+  try {
+    const existingResult = await db.execute({
+      sql: "SELECT id FROM attendance WHERE participant_id = ? AND event_id = ?",
+      args: [participant_id, event_id]
+    });
+    if (existingResult.rows.length > 0) {
+      return res.status(400).json({ error: "Already checked in" });
+    }
+    const result = await db.execute({
+      sql: "INSERT INTO attendance (participant_id, event_id) VALUES (?, ?)",
+      args: [participant_id, event_id]
+    });
+    res.json({ id: Number(result.lastInsertRowid) });
+  } catch (error) {
+    console.error("Attendance error:", error);
+    res.status(500).json({ error: "Attendance check-in failed" });
+  }
+});
+
+app.get("/api/participants", authenticateToken, async (req: any, res) => {
+  try {
+    const result = await db.execute({
+      sql: `
+        SELECT p.*, e.title as event_title,
+               CASE WHEN a.id IS NOT NULL THEN 'attended' ELSE 'registered' END as status
+        FROM participants p 
+        JOIN events e ON p.event_id = e.id 
+        LEFT JOIN attendance a ON p.id = a.participant_id AND p.event_id = a.event_id
+        WHERE e.user_id = ?
+        ORDER BY p.registered_at DESC
+      `,
+      args: [req.user.id]
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch participants" });
   }
 });
 
 app.delete("/api/events/:id", authenticateToken, async (req: any, res) => {
   try {
+    // Verify ownership
     const event = await db.execute({
       sql: "SELECT id FROM events WHERE id = ? AND user_id = ?",
       args: [req.params.id, req.user.id]
     });
     if (event.rows.length === 0) return res.status(403).json({ error: "Unauthorized" });
 
+    // With ON DELETE CASCADE, we only need to delete the event
     await db.execute({
       sql: "DELETE FROM events WHERE id = ?",
       args: [req.params.id]
     });
     res.json({ success: true });
   } catch (error) {
+    console.error("Delete error:", error);
     res.status(500).json({ error: "Failed to delete event" });
+  }
+});
+
+app.get("/api/attendance/:eventId", async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `
+        SELECT p.name, p.email, p.department, a.attended_at 
+        FROM attendance a 
+        JOIN participants p ON a.participant_id = p.id 
+        WHERE a.event_id = ?
+      `,
+      args: [req.params.eventId]
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch attendance" });
   }
 });
 
@@ -209,12 +327,27 @@ app.get("/api/stats", authenticateToken, async (req: any, res) => {
     });
     
     const departmentStatsRes = await db.execute({
-      sql: `SELECT department, COUNT(*) as count FROM participants p JOIN events e ON p.event_id = e.id WHERE e.user_id = ? GROUP BY department ORDER BY count DESC`,
+      sql: `
+        SELECT department, COUNT(*) as count 
+        FROM participants p
+        JOIN events e ON p.event_id = e.id
+        WHERE e.user_id = ?
+        GROUP BY department 
+        ORDER BY count DESC
+      `,
       args: [userId]
     });
 
     const eventStatsRes = await db.execute({
-      sql: `SELECT e.title, e.date, COUNT(p.id) as registrations, COUNT(a.id) as attendance FROM events e LEFT JOIN participants p ON e.id = p.event_id LEFT JOIN attendance a ON p.id = a.participant_id AND e.id = a.event_id WHERE e.user_id = ? GROUP BY e.id ORDER BY e.date ASC`,
+      sql: `
+        SELECT e.title, e.date, COUNT(p.id) as registrations, COUNT(a.id) as attendance
+        FROM events e
+        LEFT JOIN participants p ON e.id = p.event_id
+        LEFT JOIN attendance a ON p.id = a.participant_id AND e.id = a.event_id
+        WHERE e.user_id = ?
+        GROUP BY e.id
+        ORDER BY e.date ASC
+      `,
       args: [userId]
     });
 
@@ -226,8 +359,15 @@ app.get("/api/stats", authenticateToken, async (req: any, res) => {
       eventStats: eventStatsRes.rows
     });
   } catch (error) {
+    console.error("Stats error:", error);
     res.status(500).json({ error: "Failed to fetch statistics" });
   }
+});
+
+// Global Error Handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("Global error handler:", err);
+  res.status(500).json({ error: err.message || "Internal Server Error" });
 });
 
 // Vite middleware for development
@@ -260,6 +400,7 @@ if (process.env.NODE_ENV !== "production" && !isVercel) {
   }
 }
 
+// Start server locally
 if (!isVercel) {
   const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {

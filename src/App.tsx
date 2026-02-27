@@ -816,8 +816,16 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
         return;
       }
 
+      const contentType = res.headers.get("content-type");
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text.slice(0, 100) || 'Server returned non-JSON response');
+      }
+
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || 'Failed to create event');
       }
 
