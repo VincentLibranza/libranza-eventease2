@@ -4,11 +4,8 @@ import { createClient } from "@libsql/client";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,12 +33,14 @@ const db = createClient({
 });
 
 // Initialize Database
-async function initDb() {
-  console.log("Initializing database...");
+let isDbInitialized = false;
+async function ensureDb() {
+  if (isDbInitialized) return;
+  
+  console.log("Ensuring database is initialized...");
   try {
     // Enable foreign keys
     await db.execute("PRAGMA foreign_keys = ON");
-    console.log("Foreign keys enabled.");
 
     await db.batch([
       `CREATE TABLE IF NOT EXISTS users (
@@ -81,24 +80,38 @@ async function initDb() {
         FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
       );`
     ], "write");
-    console.log("Database tables verified/created.");
 
     // Migration: Add user_id to events if it doesn't exist
     try {
       await db.execute("ALTER TABLE events ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
-      console.log("Migration: user_id added to events.");
     } catch (e) {
       // Column might already exist
     }
+    
+    isDbInitialized = true;
+    console.log("Database initialized successfully.");
   } catch (error) {
     console.error("Database initialization error:", error);
+    throw error; // Re-throw to be caught by the caller
   }
 }
 
-initDb().catch(console.error);
-
 const app = express();
 app.use(express.json());
+
+// Middleware to ensure DB is ready
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    try {
+      await ensureDb();
+      next();
+    } catch (error: any) {
+      res.status(500).json({ error: `Database initialization failed: ${error.message}` });
+    }
+  } else {
+    next();
+  }
+});
 
 // Middleware to verify JWT and check if user exists in DB
 const authenticateToken = async (req: any, res: any, next: any) => {
@@ -131,6 +144,15 @@ const authenticateToken = async (req: any, res: any, next: any) => {
 };
 
 // Auth Routes
+app.get("/api/health", async (req, res) => {
+  try {
+    await db.execute("SELECT 1");
+    res.json({ status: "ok", database: "connected", isVercel });
+  } catch (error: any) {
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
 app.post("/api/auth/signup", async (req, res) => {
   const { name, email, password } = req.body;
   try {
