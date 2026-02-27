@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import { createClient } from "@libsql/client";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -17,29 +16,32 @@ const JWT_SECRET = process.env.JWT_SECRET || 'eventease-secret-key-123';
 let dbUrl = process.env.TURSO_DATABASE_URL;
 const dbToken = process.env.TURSO_AUTH_TOKEN;
 
-// Safety Check: If URL starts with 'eyJ', it's actually a token. Swapped!
+// Safety Check
 if (dbUrl && dbUrl.startsWith('eyJ')) {
-  console.error("ERROR: TURSO_DATABASE_URL contains a JWT token. Swapping to local fallback.");
   dbUrl = undefined;
 }
 
-// Final URL resolution
 const localDbPath = isVercel ? "/tmp/eventease.db" : path.join(__dirname, "..", "eventease.db");
 const finalUrl = dbUrl || `file:${localDbPath}`;
 
-const db = createClient({
-  url: finalUrl,
-  authToken: dbToken,
-});
+let db: any;
+try {
+  db = createClient({
+    url: finalUrl,
+    authToken: dbToken,
+  });
+} catch (e) {
+  console.error("Failed to create database client:", e);
+}
 
 // Initialize Database
 let isDbInitialized = false;
 async function ensureDb() {
   if (isDbInitialized) return;
+  if (!db) throw new Error("Database client not initialized");
   
-  console.log("Ensuring database is initialized...");
+  console.log("Initializing database...");
   try {
-    // Enable foreign keys
     await db.execute("PRAGMA foreign_keys = ON");
 
     await db.batch([
@@ -81,18 +83,15 @@ async function ensureDb() {
       );`
     ], "write");
 
-    // Migration: Add user_id to events if it doesn't exist
     try {
       await db.execute("ALTER TABLE events ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
-    } catch (e) {
-      // Column might already exist
-    }
+    } catch (e) {}
     
     isDbInitialized = true;
-    console.log("Database initialized successfully.");
-  } catch (error) {
-    console.error("Database initialization error:", error);
-    throw error; // Re-throw to be caught by the caller
+    console.log("Database initialized.");
+  } catch (error: any) {
+    console.error("DB Init Error:", error);
+    throw new Error(`DB Init Failed: ${error.message}`);
   }
 }
 
@@ -101,12 +100,12 @@ app.use(express.json());
 
 // Middleware to ensure DB is ready
 app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith('/api') && req.path !== '/api/health') {
     try {
       await ensureDb();
       next();
     } catch (error: any) {
-      res.status(500).json({ error: `Database initialization failed: ${error.message}` });
+      res.status(500).json({ error: error.message });
     }
   } else {
     next();
@@ -394,6 +393,7 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production" && !isVercel) {
+  const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true },
     appType: "spa",
