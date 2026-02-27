@@ -20,7 +20,8 @@ import {
   Mail,
   MapPin,
   Clock,
-  Filter
+  Filter,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Event, Participant, Stats } from './types';
@@ -1250,10 +1251,13 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
       
       const data = await res.json();
       
-      if (res.ok) {
+      if (res.ok || data.error === 'Already checked in') {
         onRefresh(true); // Silent refresh
         // Simple visual feedback
         setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
+        if (data.error === 'Already checked in') {
+          console.log('Participant was already checked in, updating UI.');
+        }
       } else {
         alert(data.error || 'Check-in failed');
       }
@@ -1302,7 +1306,16 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
       {selectedEventId && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-bottom border-slate-100 flex justify-between items-center">
-            <h4 className="font-bold">Participant List</h4>
+            <div className="flex items-center gap-4">
+              <h4 className="font-bold">Participant List</h4>
+              <button 
+                onClick={fetchParticipants}
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all"
+                title="Refresh List"
+              >
+                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
             <button 
               onClick={handleExport}
               className="text-indigo-600 text-sm font-medium flex items-center gap-1 hover:underline"
