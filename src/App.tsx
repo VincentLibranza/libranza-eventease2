@@ -45,11 +45,16 @@ import {
 } from 'recharts';
 
 export default function App() {
+  const [user, setUser] = useState<{ id: number, name: string, email: string } | null>(() => {
+    const saved = localStorage.getItem('eventease_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [token, setToken] = useState<string | null>(localStorage.getItem('eventease_token'));
   const [activeTab, setActiveTab] = useState<'dashboard' | 'events' | 'register' | 'attendance' | 'participants' | 'ai'>('dashboard');
   const [events, setEvents] = useState<Event[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [aiInsights, setAiInsights] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -58,17 +63,27 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (token) {
+      fetchData();
+    }
+  }, [token]);
 
   const fetchData = async () => {
+    if (!token) return;
     setLoading(true);
     try {
+      const headers = { 'Authorization': `Bearer ${token}` };
       const [eventsRes, statsRes, participantsRes] = await Promise.all([
-        fetch('/api/events'),
-        fetch('/api/stats'),
-        fetch('/api/participants')
+        fetch('/api/events', { headers }),
+        fetch('/api/stats', { headers }),
+        fetch('/api/participants', { headers })
       ]);
+
+      if (eventsRes.status === 401 || statsRes.status === 401 || participantsRes.status === 401) {
+        handleLogout();
+        return;
+      }
+
       const eventsData = await eventsRes.json();
       const statsData = await statsRes.json();
       const participantsData = await participantsRes.json();
@@ -82,6 +97,24 @@ export default function App() {
     }
   };
 
+  const handleLogin = (userData: any, userToken: string) => {
+    setUser(userData);
+    setToken(userToken);
+    localStorage.setItem('eventease_user', JSON.stringify(userData));
+    localStorage.setItem('eventease_token', userToken);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('eventease_user');
+    localStorage.removeItem('eventease_token');
+  };
+
+  if (!token) {
+    return <AuthPage onLogin={handleLogin} />;
+  }
+
   const handleExportPDF = () => {
     const doc = new jsPDF() as any;
     doc.text('EventEase - Participant Report', 14, 15);
@@ -94,7 +127,14 @@ export default function App() {
   };
 
   const handleExportExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(participants);
+    const worksheet = XLSX.utils.json_to_sheet(participants.map(p => ({
+      Name: p.name,
+      Email: p.email,
+      Department: p.department,
+      Event: (p as any).event_title,
+      Status: p.status === 'attended' ? 'Present' : 'Registered',
+      'Registered At': new Date(p.registered_at).toLocaleString()
+    })));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
     XLSX.writeFile(workbook, "participants-report.xlsx");
@@ -117,7 +157,10 @@ export default function App() {
   const handleDeleteEvent = async (id: number) => {
     if (!confirm('Are you sure you want to delete this event? All registrations will be lost.')) return;
     try {
-      await fetch(`/api/events/${id}`, { method: 'DELETE' });
+      await fetch(`/api/events/${id}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       fetchData();
     } catch (error) {
       console.error('Delete failed:', error);
@@ -134,6 +177,17 @@ export default function App() {
               <Calendar className="text-white w-5 h-5" />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-indigo-600">EventEase</h1>
+          </div>
+
+          <div className="mb-6 px-4 py-3 bg-slate-50 rounded-xl border border-slate-100">
+            <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Logged in as</p>
+            <p className="text-sm font-bold text-slate-700 truncate">{user?.name}</p>
+            <button 
+              onClick={handleLogout}
+              className="text-[10px] text-red-500 font-bold hover:underline mt-2"
+            >
+              Logout
+            </button>
           </div>
 
           <nav className="space-y-1">
@@ -313,7 +367,7 @@ function ParticipantsTab({ participants, onExportPDF, onExportExcel }: { partici
                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
                       p.status === 'attended' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
                     }`}>
-                      {p.status}
+                      {p.status === 'attended' ? 'Present' : 'Registered'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -454,6 +508,113 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+function AuthPage({ onLogin }: { onLogin: (user: any, token: string) => void }) {
+  const [isLogin, setIsLogin] = useState(true);
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Authentication failed');
+      onLogin(data.user, data.token);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 w-full max-w-md"
+      >
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <Calendar className="text-white" size={24} />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900">{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+          <p className="text-slate-500 text-sm mt-2">
+            {isLogin ? 'Sign in to manage your events' : 'Join EventEase to start organizing'}
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {!isLogin && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+              <input 
+                required
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="John Doe"
+                value={formData.name}
+                onChange={e => setFormData({...formData, name: e.target.value})}
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+            <input 
+              required
+              type="email"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="john@example.com"
+              value={formData.email}
+              onChange={e => setFormData({...formData, email: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <input 
+              required
+              type="password"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="••••••••"
+              value={formData.password}
+              onChange={e => setFormData({...formData, password: e.target.value})}
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="animate-spin mx-auto" size={24} /> : (isLogin ? 'Sign In' : 'Sign Up')}
+          </button>
+        </form>
+
+        <div className="mt-8 text-center">
+          <button 
+            onClick={() => setIsLogin(!isLogin)}
+            className="text-indigo-600 font-semibold text-sm hover:underline"
+          >
+            {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+          </button>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 
@@ -615,9 +776,13 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const token = localStorage.getItem('eventease_token');
     await fetch('/api/events', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(formData)
     });
     setShowForm(false);
@@ -902,16 +1067,23 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
 
   const fetchParticipants = async () => {
     setLoading(true);
-    const res = await fetch(`/api/events/${selectedEventId}`);
+    const token = localStorage.getItem('eventease_token');
+    const res = await fetch(`/api/events/${selectedEventId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
     const data = await res.json();
     setParticipants(data.participants || []);
     setLoading(false);
   };
 
   const handleCheckIn = async (participantId: number) => {
+    const token = localStorage.getItem('eventease_token');
     const res = await fetch('/api/attendance', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({ participant_id: participantId, event_id: selectedEventId })
     });
     if (res.ok) {
