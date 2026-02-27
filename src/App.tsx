@@ -84,9 +84,18 @@ export default function App() {
         return;
       }
 
-      const eventsData = await eventsRes.json();
-      const statsData = await statsRes.json();
-      const participantsData = await participantsRes.json();
+      const checkJson = async (res: Response) => {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          return res.json();
+        }
+        const text = await res.text();
+        throw new Error(`Expected JSON but got ${contentType || 'unknown'}: ${text.substring(0, 100)}...`);
+      };
+
+      const eventsData = await checkJson(eventsRes);
+      const statsData = await checkJson(statsRes);
+      const participantsData = await checkJson(participantsRes);
       setEvents(eventsData);
       setStats(statsData);
       setParticipants(participantsData);
@@ -782,20 +791,44 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ title: '', description: '', date: '', location: '', capacity: 100 });
   const [qrEvent, setQrEvent] = useState<Event | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('eventease_token');
-    await fetch('/api/events', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(formData)
-    });
-    setShowForm(false);
-    onRefresh();
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const token = localStorage.getItem('eventease_token');
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
+      });
+      
+      if (res.status === 401) {
+        localStorage.removeItem('eventease_token');
+        localStorage.removeItem('eventease_user');
+        window.location.reload(); // Force a reload to show login page
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to create event');
+      }
+
+      setFormData({ title: '', description: '', date: '', location: '', capacity: 100 });
+      setShowForm(false);
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -824,6 +857,13 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
                 <X size={24} />
               </button>
             </div>
+            
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-xs border border-red-100">
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Event Title</label>
@@ -832,6 +872,15 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={formData.title}
                   onChange={e => setFormData({...formData, title: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea 
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-24"
+                  value={formData.description}
+                  onChange={e => setFormData({...formData, description: e.target.value})}
+                  placeholder="Tell us about the event..."
                 />
               </div>
               <div>
@@ -872,9 +921,11 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Create
+                  {isSubmitting && <Loader2 className="animate-spin" size={18} />}
+                  {isSubmitting ? 'Creating...' : 'Create'}
                 </button>
               </div>
             </form>

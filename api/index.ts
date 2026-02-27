@@ -31,7 +31,6 @@ const db = createClient({
 // Initialize Database
 async function initDb() {
   try {
-    // Enable foreign keys
     await db.execute("PRAGMA foreign_keys = ON");
 
     await db.batch([
@@ -73,12 +72,9 @@ async function initDb() {
       );`
     ], "write");
 
-    // Migration: Add user_id to events if it doesn't exist
     try {
       await db.execute("ALTER TABLE events ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
-    } catch (e) {
-      // Column might already exist
-    }
+    } catch (e) {}
   } catch (error) {
     console.error("Database initialization error:", error);
   }
@@ -89,17 +85,32 @@ initDb().catch(console.error);
 const app = express();
 app.use(express.json());
 
-// Middleware to verify JWT
-const authenticateToken = (req: any, res: any, next: any) => {
+// Middleware to verify JWT and check if user exists in DB
+const authenticateToken = async (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) return res.status(401).json({ error: "Unauthorized" });
 
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+  jwt.verify(token, JWT_SECRET, async (err: any, decoded: any) => {
     if (err) return res.status(403).json({ error: "Forbidden" });
-    req.user = user;
-    next();
+    
+    try {
+      const result = await db.execute({
+        sql: "SELECT id FROM users WHERE id = ?",
+        args: [decoded.id]
+      });
+      
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User no longer exists. Please log in again." });
+      }
+      
+      req.user = decoded;
+      next();
+    } catch (dbError) {
+      console.error("Auth DB check error:", dbError);
+      res.status(500).json({ error: "Internal server error during authentication" });
+    }
   });
 };
 
@@ -116,11 +127,10 @@ app.post("/api/auth/signup", async (req, res) => {
     const token = jwt.sign({ id: userId, email, name }, JWT_SECRET);
     res.json({ token, user: { id: userId, name, email } });
   } catch (error: any) {
-    console.error("Signup error:", error);
     if (error.message?.includes("UNIQUE constraint failed")) {
       return res.status(400).json({ error: "Email already exists" });
     }
-    res.status(500).json({ error: `Signup failed: ${error.message || 'Unknown error'}` });
+    res.status(500).json({ error: `Signup failed: ${error.message}` });
   }
 });
 
@@ -138,22 +148,17 @@ app.post("/api/auth/login", async (req, res) => {
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
   } catch (error: any) {
-    console.error("Login error:", error);
-    res.status(500).json({ error: `Login failed: ${error.message || 'Unknown error'}` });
+    res.status(500).json({ error: `Login failed: ${error.message}` });
   }
 });
 
-// API Routes (Protected)
+// API Routes
 app.get("/api/events", authenticateToken, async (req: any, res) => {
-  try {
-    const result = await db.execute({
-      sql: "SELECT * FROM events WHERE user_id = ? ORDER BY date DESC",
-      args: [req.user.id]
-    });
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch events" });
-  }
+  const result = await db.execute({
+    sql: "SELECT * FROM events WHERE user_id = ? ORDER BY date DESC",
+    args: [req.user.id]
+  });
+  res.json(result.rows);
 });
 
 app.post("/api/events", authenticateToken, async (req: any, res) => {
@@ -164,8 +169,8 @@ app.post("/api/events", authenticateToken, async (req: any, res) => {
       args: [req.user.id, title, description, date, location, capacity]
     });
     res.json({ id: Number(result.lastInsertRowid) });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to create event" });
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to create event: ${error.message}` });
   }
 });
 
@@ -204,27 +209,12 @@ app.get("/api/stats", authenticateToken, async (req: any, res) => {
     });
     
     const departmentStatsRes = await db.execute({
-      sql: `
-        SELECT department, COUNT(*) as count 
-        FROM participants p
-        JOIN events e ON p.event_id = e.id
-        WHERE e.user_id = ?
-        GROUP BY department 
-        ORDER BY count DESC
-      `,
+      sql: `SELECT department, COUNT(*) as count FROM participants p JOIN events e ON p.event_id = e.id WHERE e.user_id = ? GROUP BY department ORDER BY count DESC`,
       args: [userId]
     });
 
     const eventStatsRes = await db.execute({
-      sql: `
-        SELECT e.title, e.date, COUNT(p.id) as registrations, COUNT(a.id) as attendance
-        FROM events e
-        LEFT JOIN participants p ON e.id = p.event_id
-        LEFT JOIN attendance a ON p.id = a.participant_id AND e.id = a.event_id
-        WHERE e.user_id = ?
-        GROUP BY e.id
-        ORDER BY e.date ASC
-      `,
+      sql: `SELECT e.title, e.date, COUNT(p.id) as registrations, COUNT(a.id) as attendance FROM events e LEFT JOIN participants p ON e.id = p.event_id LEFT JOIN attendance a ON p.id = a.participant_id AND e.id = a.event_id WHERE e.user_id = ? GROUP BY e.id ORDER BY e.date ASC`,
       args: [userId]
     });
 
@@ -270,7 +260,6 @@ if (process.env.NODE_ENV !== "production" && !isVercel) {
   }
 }
 
-// Start server locally
 if (!isVercel) {
   const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {
