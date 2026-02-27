@@ -77,9 +77,9 @@ export default function App() {
     }
   }, [token]);
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     if (!token) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
       const [eventsRes, statsRes, participantsRes] = await Promise.all([
@@ -111,7 +111,7 @@ export default function App() {
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -229,12 +229,6 @@ export default function App() {
               onClick={() => setActiveTab('events')} 
             />
             <NavItem 
-              icon={<Users size={20} />} 
-              label="Participants" 
-              active={activeTab === 'participants'} 
-              onClick={() => setActiveTab('participants')} 
-            />
-            <NavItem 
               icon={<CheckCircle size={20} />} 
               label="Attendance" 
               active={activeTab === 'attendance'} 
@@ -306,7 +300,6 @@ export default function App() {
             >
               {activeTab === 'dashboard' && <Dashboard stats={stats} events={events} onAnalyze={handleAnalyzeTrends} />}
               {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} />}
-              {activeTab === 'participants' && <ParticipantsTab participants={participants} onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />}
               {activeTab === 'register' && <RegistrationForm events={events} onRefresh={fetchData} />}
               {activeTab === 'attendance' && <AttendanceTracker events={events} onRefresh={fetchData} />}
               {activeTab === 'ai' && <AITab insights={aiInsights} stats={stats} />}
@@ -486,94 +479,6 @@ function PublicRegistrationPage({ eventId, onBack }: { eventId: string, onBack: 
           </>
         )}
       </motion.div>
-    </div>
-  );
-}
-
-function ParticipantsTab({ participants, onExportPDF, onExportExcel }: { participants: Participant[], onExportPDF: () => void, onExportExcel: () => void }) {
-  const [filter, setFilter] = useState('');
-  
-  const filtered = participants.filter(p => 
-    p.name.toLowerCase().includes(filter.toLowerCase()) || 
-    p.email.toLowerCase().includes(filter.toLowerCase()) ||
-    p.department.toLowerCase().includes(filter.toLowerCase())
-  );
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="Filter participants..." 
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <button onClick={onExportPDF} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors">
-            <FileText size={18} />
-            <span>PDF</span>
-          </button>
-          <button onClick={onExportExcel} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors">
-            <Download size={18} />
-            <span>Excel</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Participant</th>
-                <th className="px-6 py-4">Department</th>
-                <th className="px-6 py-4">Event</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map(p => (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-slate-900">{p.name}</div>
-                    <div className="text-xs text-slate-500">{p.email}</div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">{p.department}</td>
-                  <td className="px-6 py-4 text-sm text-slate-600">{(p as any).event_title}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      p.status === 'attended' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {p.status === 'attended' ? 'Present' : 'Registered'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <button 
-                      onClick={() => alert(`Reminder sent to ${p.email}`)}
-                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                      title="Send Reminder"
-                    >
-                      <Mail size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                    No participants found matching your search.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1234,7 +1139,7 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
           className="mb-6 p-4 bg-emerald-50 text-emerald-700 rounded-xl flex items-center gap-3"
         >
           <CheckCircle size={20} />
-          <span className="font-medium">Registration successful! Check your email for confirmation.</span>
+          <span className="font-medium">Registration successful!</span>
         </motion.div>
       )}
 
@@ -1300,7 +1205,7 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
   );
 }
 
-function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: () => void }) {
+function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: (silent?: boolean) => void }) {
   const [selectedEventId, setSelectedEventId] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1330,10 +1235,10 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ participant_id: participantId, event_id: selectedEventId })
+      body: JSON.stringify({ participant_id: participantId, event_id: parseInt(selectedEventId) })
     });
     if (res.ok) {
-      onRefresh();
+      onRefresh(true); // Silent refresh
       // Simple visual feedback
       setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
     }
