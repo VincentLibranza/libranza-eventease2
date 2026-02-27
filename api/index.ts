@@ -229,7 +229,13 @@ app.get("/api/events/:id", async (req, res) => {
     if (eventResult.rows.length === 0) return res.status(404).json({ error: "Event not found" });
     
     const participantsResult = await db.execute({
-      sql: "SELECT * FROM participants WHERE event_id = ?",
+      sql: `
+        SELECT p.*, 
+               CASE WHEN a.id IS NOT NULL THEN 'attended' ELSE 'registered' END as status
+        FROM participants p 
+        LEFT JOIN attendance a ON p.id = a.participant_id AND p.event_id = a.event_id
+        WHERE p.event_id = ?
+      `,
       args: [req.params.id]
     });
     res.json({ ...eventResult.rows[0], participants: participantsResult.rows });
@@ -254,6 +260,11 @@ app.post("/api/register", async (req, res) => {
 
 app.post("/api/attendance", async (req, res) => {
   const { participant_id, event_id } = req.body;
+  
+  if (!participant_id || !event_id) {
+    return res.status(400).json({ error: "Missing participant_id or event_id" });
+  }
+
   try {
     const existingResult = await db.execute({
       sql: "SELECT id FROM attendance WHERE participant_id = ? AND event_id = ?",
@@ -266,10 +277,10 @@ app.post("/api/attendance", async (req, res) => {
       sql: "INSERT INTO attendance (participant_id, event_id) VALUES (?, ?)",
       args: [participant_id, event_id]
     });
-    res.json({ id: Number(result.lastInsertRowid) });
-  } catch (error) {
+    res.json({ id: Number(result.lastInsertRowid), success: true });
+  } catch (error: any) {
     console.error("Attendance error:", error);
-    res.status(500).json({ error: "Attendance check-in failed" });
+    res.status(500).json({ error: `Attendance check-in failed: ${error.message}` });
   }
 });
 

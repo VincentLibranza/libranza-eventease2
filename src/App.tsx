@@ -1218,29 +1218,48 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
 
   const fetchParticipants = async () => {
     setLoading(true);
-    const token = localStorage.getItem('eventease_token');
-    const res = await fetch(`/api/events/${selectedEventId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    setParticipants(data.participants || []);
-    setLoading(false);
+    try {
+      const token = localStorage.getItem('eventease_token');
+      const res = await fetch(`/api/events/${selectedEventId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch participants');
+      const data = await res.json();
+      setParticipants(data.participants || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCheckIn = async (participantId: number) => {
-    const token = localStorage.getItem('eventease_token');
-    const res = await fetch('/api/attendance', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ participant_id: participantId, event_id: parseInt(selectedEventId) })
-    });
-    if (res.ok) {
-      onRefresh(true); // Silent refresh
-      // Simple visual feedback
-      setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
+    try {
+      const token = localStorage.getItem('eventease_token');
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          participant_id: Number(participantId), 
+          event_id: Number(selectedEventId) 
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        onRefresh(true); // Silent refresh
+        // Simple visual feedback
+        setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
+      } else {
+        alert(data.error || 'Check-in failed');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('A connection error occurred during check-in');
     }
   };
 
