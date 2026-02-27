@@ -230,7 +230,7 @@ app.get("/api/events/:id", async (req, res) => {
     
     const participantsResult = await db.execute({
       sql: `
-        SELECT p.*, 
+        SELECT p.id, p.event_id, p.name, p.email, p.department, p.registered_at,
                CASE WHEN a.id IS NOT NULL THEN 'attended' ELSE 'registered' END as status
         FROM participants p 
         LEFT JOIN attendance a ON p.id = a.participant_id AND p.event_id = a.event_id
@@ -288,7 +288,8 @@ app.get("/api/participants", authenticateToken, async (req: any, res) => {
   try {
     const result = await db.execute({
       sql: `
-        SELECT p.*, e.title as event_title,
+        SELECT p.id, p.event_id, p.name, p.email, p.department, p.registered_at, 
+               e.title as event_title,
                CASE WHEN a.id IS NOT NULL THEN 'attended' ELSE 'registered' END as status
         FROM participants p 
         JOIN events e ON p.event_id = e.id 
