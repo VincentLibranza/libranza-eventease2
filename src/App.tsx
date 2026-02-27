@@ -528,7 +528,16 @@ function AuthPage({ onLogin }: { onLogin: (user: any, token: string) => void }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-      const data = await res.json();
+      
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text.slice(0, 100) || 'A server error occurred. Please check your database configuration.');
+      }
+
       if (!res.ok) throw new Error(data.error || 'Authentication failed');
       onLogin(data.user, data.token);
     } catch (err: any) {
