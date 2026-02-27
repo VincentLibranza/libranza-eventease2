@@ -923,18 +923,16 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
 
   const handleExport = () => {
     if (participants.length === 0) return;
-    const headers = ['Name', 'Email', 'Department', 'Status', 'Registered At'];
-    const rows = participants.map(p => [p.name, p.email, p.department, p.status, p.registered_at]);
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `event_${selectedEventId}_report.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(participants.map(p => ({
+      Name: p.name,
+      Email: p.email,
+      Department: p.department,
+      Status: p.status === 'attended' ? 'Present' : 'Registered',
+      'Registered At': new Date(p.registered_at).toLocaleString()
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
+    XLSX.writeFile(workbook, `event_${selectedEventId}_attendance.xlsx`);
   };
 
   return (

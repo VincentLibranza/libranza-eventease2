@@ -1,6 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
+import { createClient } from "@libsql/client";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -9,42 +9,58 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isVercel = process.env.VERCEL === '1';
-// On Vercel, the API is in /api, so we go up one level for the DB if not in /tmp
-const dbPath = isVercel ? "/tmp/eventease.db" : path.join(__dirname, "..", "eventease.db");
-const db = new Database(dbPath);
+
+// Database Configuration
+let dbUrl = process.env.TURSO_DATABASE_URL;
+const dbToken = process.env.TURSO_AUTH_TOKEN;
+
+// Safety Check: If URL starts with 'eyJ', it's actually a token. Swapped!
+if (dbUrl && dbUrl.startsWith('eyJ')) {
+  console.error("ERROR: TURSO_DATABASE_URL contains a JWT token. Swapping to local fallback.");
+  dbUrl = undefined;
+}
+
+const finalUrl = dbUrl || `file:${path.join(__dirname, "..", "eventease.db")}`;
+
+const db = createClient({
+  url: finalUrl,
+  authToken: dbToken,
+});
 
 // Initialize Database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT,
-    date TEXT NOT NULL,
-    location TEXT,
-    capacity INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+async function initDb() {
+  await db.batch([
+    `CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      date TEXT NOT NULL,
+      location TEXT,
+      capacity INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );`,
+    `CREATE TABLE IF NOT EXISTS participants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      department TEXT,
+      status TEXT DEFAULT 'registered',
+      registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES events (id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      participant_id INTEGER,
+      event_id INTEGER,
+      attended_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (participant_id) REFERENCES participants (id),
+      FOREIGN KEY (event_id) REFERENCES events (id)
+    );`
+  ], "write");
+}
 
-  CREATE TABLE IF NOT EXISTS participants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id INTEGER,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    department TEXT,
-    status TEXT DEFAULT 'registered',
-    registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (event_id) REFERENCES events (id)
-  );
-
-  CREATE TABLE IF NOT EXISTS attendance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    participant_id INTEGER,
-    event_id INTEGER,
-    attended_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (participant_id) REFERENCES participants (id),
-    FOREIGN KEY (event_id) REFERENCES events (id)
-  );
-`);
+initDb().catch(console.error);
 
 const app = express();
 
@@ -54,107 +70,126 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
-  app.get("/api/events", (req, res) => {
-    const events = db.prepare("SELECT * FROM events ORDER BY date DESC").all();
-    res.json(events);
+  app.get("/api/events", async (req, res) => {
+    const result = await db.execute("SELECT * FROM events ORDER BY date DESC");
+    res.json(result.rows);
   });
 
-  app.post("/api/events", (req, res) => {
+  app.post("/api/events", async (req, res) => {
     const { title, description, date, location, capacity } = req.body;
-    const info = db.prepare(
-      "INSERT INTO events (title, description, date, location, capacity) VALUES (?, ?, ?, ?, ?)"
-    ).run(title, description, date, location, capacity);
-    res.json({ id: info.lastInsertRowid });
+    const result = await db.execute({
+      sql: "INSERT INTO events (title, description, date, location, capacity) VALUES (?, ?, ?, ?, ?)",
+      args: [title, description, date, location, capacity]
+    });
+    res.json({ id: Number(result.lastInsertRowid) });
   });
 
-  app.get("/api/events/:id", (req, res) => {
-    const event = db.prepare("SELECT * FROM events WHERE id = ?").get(req.params.id) as any;
-    const participants = db.prepare("SELECT * FROM participants WHERE event_id = ?").all(req.params.id);
-    res.json({ ...event, participants });
+  app.get("/api/events/:id", async (req, res) => {
+    const eventResult = await db.execute({
+      sql: "SELECT * FROM events WHERE id = ?",
+      args: [req.params.id]
+    });
+    const participantsResult = await db.execute({
+      sql: "SELECT * FROM participants WHERE event_id = ?",
+      args: [req.params.id]
+    });
+    res.json({ ...eventResult.rows[0], participants: participantsResult.rows });
   });
 
-  app.post("/api/register", (req, res) => {
+  app.post("/api/register", async (req, res) => {
     const { event_id, name, email, department } = req.body;
     try {
-      const info = db.prepare(
-        "INSERT INTO participants (event_id, name, email, department) VALUES (?, ?, ?, ?)"
-      ).run(event_id, name, email, department);
-      res.json({ id: info.lastInsertRowid });
+      const result = await db.execute({
+        sql: "INSERT INTO participants (event_id, name, email, department) VALUES (?, ?, ?, ?)",
+        args: [event_id, name, email, department]
+      });
+      res.json({ id: Number(result.lastInsertRowid) });
     } catch (error) {
       res.status(500).json({ error: "Registration failed" });
     }
   });
 
-  app.post("/api/attendance", (req, res) => {
+  app.post("/api/attendance", async (req, res) => {
     const { participant_id, event_id } = req.body;
-    const existing = db.prepare("SELECT id FROM attendance WHERE participant_id = ? AND event_id = ?").get(participant_id, event_id);
-    if (existing) {
+    const existingResult = await db.execute({
+      sql: "SELECT id FROM attendance WHERE participant_id = ? AND event_id = ?",
+      args: [participant_id, event_id]
+    });
+    if (existingResult.rows.length > 0) {
       return res.status(400).json({ error: "Already checked in" });
     }
-    const info = db.prepare(
-      "INSERT INTO attendance (participant_id, event_id) VALUES (?, ?)"
-    ).run(participant_id, event_id);
-    res.json({ id: info.lastInsertRowid });
+    const result = await db.execute({
+      sql: "INSERT INTO attendance (participant_id, event_id) VALUES (?, ?)",
+      args: [participant_id, event_id]
+    });
+    res.json({ id: Number(result.lastInsertRowid) });
   });
 
-  app.get("/api/participants", (req, res) => {
-    const participants = db.prepare(`
-      SELECT p.*, e.title as event_title 
+  app.get("/api/participants", async (req, res) => {
+    const result = await db.execute(`
+      SELECT p.*, e.title as event_title,
+             CASE WHEN a.id IS NOT NULL THEN 'attended' ELSE 'registered' END as status
       FROM participants p 
       JOIN events e ON p.event_id = e.id 
+      LEFT JOIN attendance a ON p.id = a.participant_id AND p.event_id = a.event_id
       ORDER BY p.registered_at DESC
-    `).all();
-    res.json(participants);
+    `);
+    res.json(result.rows);
   });
 
-  app.delete("/api/events/:id", (req, res) => {
+  app.delete("/api/events/:id", async (req, res) => {
     try {
-      db.prepare("DELETE FROM attendance WHERE event_id = ?").run(req.params.id);
-      db.prepare("DELETE FROM participants WHERE event_id = ?").run(req.params.id);
-      db.prepare("DELETE FROM events WHERE id = ?").run(req.params.id);
+      await db.batch([
+        { sql: "DELETE FROM attendance WHERE event_id = ?", args: [req.params.id] },
+        { sql: "DELETE FROM participants WHERE event_id = ?", args: [req.params.id] },
+        { sql: "DELETE FROM events WHERE id = ?", args: [req.params.id] }
+      ], "write");
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete event" });
     }
   });
 
-  app.get("/api/attendance/:eventId", (req, res) => {
-    const attendance = db.prepare(`
-      SELECT p.name, p.email, p.department, a.attended_at 
-      FROM attendance a 
-      JOIN participants p ON a.participant_id = p.id 
-      WHERE a.event_id = ?
-    `).all(req.params.eventId);
-    res.json(attendance);
+  app.get("/api/attendance/:eventId", async (req, res) => {
+    const result = await db.execute({
+      sql: `
+        SELECT p.name, p.email, p.department, a.attended_at 
+        FROM attendance a 
+        JOIN participants p ON a.participant_id = p.id 
+        WHERE a.event_id = ?
+      `,
+      args: [req.params.eventId]
+    });
+    res.json(result.rows);
   });
 
-  app.get("/api/stats", (req, res) => {
-    const totalEvents = (db.prepare("SELECT COUNT(*) as count FROM events").get() as any).count;
-    const totalParticipants = (db.prepare("SELECT COUNT(*) as count FROM participants").get() as any).count;
-    const totalAttendance = (db.prepare("SELECT COUNT(*) as count FROM attendance").get() as any).count;
+  app.get("/api/stats", async (req, res) => {
+    const totalEventsRes = await db.execute("SELECT COUNT(*) as count FROM events");
+    const totalParticipantsRes = await db.execute("SELECT COUNT(*) as count FROM participants");
+    const totalAttendanceRes = await db.execute("SELECT COUNT(*) as count FROM attendance");
     
-    const departmentStats = db.prepare(`
+    const departmentStatsRes = await db.execute(`
       SELECT department, COUNT(*) as count 
       FROM participants 
       GROUP BY department 
       ORDER BY count DESC
-    `).all();
+    `);
 
-    const eventStats = db.prepare(`
+    const eventStatsRes = await db.execute(`
       SELECT e.title, e.date, COUNT(p.id) as registrations, COUNT(a.id) as attendance
       FROM events e
       LEFT JOIN participants p ON e.id = p.event_id
       LEFT JOIN attendance a ON p.id = a.participant_id AND e.id = a.event_id
       GROUP BY e.id
       ORDER BY e.date ASC
-    `).all();
+    `);
 
     res.json({
-      totalEvents,
-      totalParticipants,
-      totalAttendance,
-      departmentStats,
-      eventStats
+      totalEvents: Number(totalEventsRes.rows[0].count),
+      totalParticipants: Number(totalParticipantsRes.rows[0].count),
+      totalAttendance: Number(totalAttendanceRes.rows[0].count),
+      departmentStats: departmentStatsRes.rows,
+      eventStats: eventStatsRes.rows
     });
   });
 
@@ -170,7 +205,8 @@ async function startServer() {
     app.use('*', async (req, res, next) => {
       const url = req.originalUrl;
       try {
-        let template = fs.readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf-8');
+        const templatePath = path.resolve(__dirname, '..', 'index.html');
+        let template = fs.readFileSync(templatePath, 'utf-8');
         template = await vite.transformIndexHtml(url, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e) {
