@@ -261,16 +261,18 @@ export default function App() {
             <p className="text-slate-500 text-sm">Manage your event ecosystem efficiently.</p>
           </div>
           <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-            </div>
+            {(activeTab === 'events' || activeTab === 'attendance') && (
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Search..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+            )}
             <button 
               onClick={handleAnalyzeTrends}
               disabled={isAnalyzing}
@@ -302,9 +304,9 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {activeTab === 'dashboard' && <Dashboard stats={stats} events={events} onAnalyze={handleAnalyzeTrends} />}
-              {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} />}
+              {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} searchQuery={searchQuery} />}
               {activeTab === 'register' && <RegistrationForm events={events} onRefresh={fetchData} />}
-              {activeTab === 'attendance' && <AttendanceTracker events={events} onRefresh={fetchData} />}
+              {activeTab === 'attendance' && <AttendanceTracker events={events} onRefresh={fetchData} searchQuery={searchQuery} />}
               {activeTab === 'ai' && <AITab insights={aiInsights} stats={stats} />}
             </motion.div>
           )}
@@ -868,13 +870,19 @@ function StatCard({ label, value, icon, color }: { label: string, value: string 
   );
 }
 
-function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefresh: () => void, onDelete: (id: number) => void }) {
+function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Event[], onRefresh: () => void, onDelete: (id: number) => void, searchQuery: string }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ title: '', description: '', date: '', location: '', capacity: 100 });
   const [qrEvent, setQrEvent] = useState<Event | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+
+  const filteredEvents = events.filter(e => 
+    e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    e.location.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1079,7 +1087,7 @@ function EventsList({ events, onRefresh, onDelete }: { events: Event[], onRefres
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {events.map(event => (
+        {filteredEvents.map(event => (
           <div key={event.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group hover:border-indigo-300 transition-all">
             <div className="h-32 bg-slate-100 relative overflow-hidden">
               <img 
@@ -1231,10 +1239,16 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
   );
 }
 
-function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: (silent?: boolean) => void }) {
+function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[], onRefresh: (silent?: boolean) => void, searchQuery: string }) {
   const [selectedEventId, setSelectedEventId] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const filteredParticipants = participants.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.department.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   useEffect(() => {
     if (selectedEventId) {
@@ -1360,7 +1374,7 @@ function AttendanceTracker({ events, onRefresh }: { events: Event[], onRefresh: 
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {participants.map(p => (
+                {filteredParticipants.map(p => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-medium">{p.name}</div>
