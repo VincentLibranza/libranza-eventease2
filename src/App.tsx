@@ -1313,25 +1313,25 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
           <CheckCircle size={32} />
         </div>
         <h3 className="text-2xl font-bold mb-2">Registration Successful!</h3>
-        <p className="text-slate-500 mb-8">Save this QR code to present at the event entrance.</p>
+        <p className="text-slate-500 mb-8">You have been successfully registered. You can check in at the event entrance using your registered email.</p>
         
-        <div className="bg-slate-50 p-6 rounded-2xl flex justify-center mb-8 border border-slate-100 shadow-inner">
-          <QRCodeSVG 
-            value={JSON.stringify({ participant_id: successData.id, event_id: parseInt(formData.event_id) })} 
-            size={200}
-            level="H"
-            includeMargin={true}
-          />
-        </div>
-        
-        <div className="text-left bg-slate-50 p-4 rounded-xl mb-8">
-          <p className="text-xs text-slate-400 uppercase font-bold mb-1">Event</p>
-          <p className="font-bold text-slate-800">{successData.event_title}</p>
+        <div className="text-left bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
+          <div className="mb-4">
+            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Event</p>
+            <p className="font-bold text-slate-800 text-lg">{successData.event_title}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Status</p>
+            <p className="font-bold text-emerald-600 flex items-center gap-2">
+              <CheckCircle size={16} />
+              Confirmed
+            </p>
+          </div>
         </div>
 
         <button 
           onClick={() => setSuccessData(null)}
-          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
+          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
         >
           Register Another
         </button>
