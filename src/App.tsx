@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Event, Participant, Stats } from './types';
 import { getChatbotResponse, predictAttendance, analyzeTrends } from './services/geminiService';
 import { QRCodeSVG } from 'qrcode.react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -1142,7 +1143,7 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
 
 function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: () => void }) {
   const [formData, setFormData] = useState({ event_id: '', name: '', email: '', department: '' });
-  const [success, setSuccess] = useState(false);
+  const [successData, setSuccessData] = useState<{ id: number, event_title: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1152,12 +1153,46 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
       body: JSON.stringify(formData)
     });
     if (res.ok) {
-      setSuccess(true);
+      const data = await res.json();
+      const event = events.find(e => e.id === parseInt(formData.event_id));
+      setSuccessData({ id: data.id, event_title: event?.title || 'Event' });
       setFormData({ event_id: '', name: '', email: '', department: '' });
       onRefresh();
-      setTimeout(() => setSuccess(false), 3000);
     }
   };
+
+  if (successData) {
+    return (
+      <div className="max-w-md mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-xl text-center">
+        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+          <CheckCircle size={32} />
+        </div>
+        <h3 className="text-2xl font-bold mb-2">Registration Successful!</h3>
+        <p className="text-slate-500 mb-8">Save this QR code to present at the event entrance.</p>
+        
+        <div className="bg-slate-50 p-6 rounded-2xl flex justify-center mb-8 border border-slate-100 shadow-inner">
+          <QRCodeSVG 
+            value={JSON.stringify({ participant_id: successData.id, event_id: parseInt(formData.event_id) })} 
+            size={200}
+            level="H"
+            includeMargin={true}
+          />
+        </div>
+        
+        <div className="text-left bg-slate-50 p-4 rounded-xl mb-8">
+          <p className="text-xs text-slate-400 uppercase font-bold mb-1">Event</p>
+          <p className="font-bold text-slate-800">{successData.event_title}</p>
+        </div>
+
+        <button 
+          onClick={() => setSuccessData(null)}
+          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
+        >
+          Register Another
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
@@ -1165,17 +1200,6 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
         <h3 className="text-2xl font-bold mb-2">Event Registration</h3>
         <p className="text-slate-500">Fill out the form below to register for an upcoming event.</p>
       </div>
-
-      {success && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 bg-emerald-50 text-emerald-700 rounded-xl flex items-center gap-3"
-        >
-          <CheckCircle size={20} />
-          <span className="font-medium">Registration successful!</span>
-        </motion.div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
@@ -1243,6 +1267,9 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
   const [selectedEventId, setSelectedEventId] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null);
 
   const filteredParticipants = participants.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1294,17 +1321,78 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
         onRefresh(true); // Silent refresh
         // Simple visual feedback
         setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
-        if (data.error === 'Already checked in') {
-          console.log('Participant was already checked in, updating UI.');
-        }
+        return true;
       } else {
-        alert(data.error || 'Check-in failed');
+        setScanError(data.error || 'Check-in failed');
+        return false;
       }
     } catch (err) {
       console.error(err);
-      alert('A connection error occurred during check-in');
+      setScanError('Connection error during check-in');
+      return false;
     }
   };
+
+  async function onScanSuccess(decodedText: string) {
+    try {
+      let data;
+      try {
+        data = JSON.parse(decodedText);
+      } catch (e) {
+        data = { participant_id: parseInt(decodedText) };
+      }
+
+      if (!data.participant_id) throw new Error("Invalid QR Code");
+      
+      const participant = participants.find(p => p.id === data.participant_id);
+      
+      if (!participant) {
+        setScanError(`DECLINED: Not registered for this event`);
+        setScanSuccess(null);
+        setTimeout(() => setScanError(null), 4000);
+        return;
+      }
+
+      if (participant.status === 'attended') {
+        setScanSuccess(`ALREADY PRESENT: ${participant.name}`);
+        setScanError(null);
+        setTimeout(() => setScanSuccess(null), 4000);
+        return;
+      }
+
+      const success = await handleCheckIn(participant.id);
+      if (success) {
+        setScanSuccess(`PASS: Welcome, ${participant.name}!`);
+        setScanError(null);
+        setTimeout(() => setScanSuccess(null), 4000);
+      }
+    } catch (err) {
+      setScanError("DECLINED: Invalid QR code format");
+      setScanSuccess(null);
+      setTimeout(() => setScanError(null), 4000);
+    }
+  }
+
+  function onScanFailure(error: any) {
+    // Silent failure
+  }
+
+  useEffect(() => {
+    let scanner: Html5QrcodeScanner | null = null;
+    if (isScanning) {
+      scanner = new Html5QrcodeScanner("reader", { 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0
+      }, false);
+      scanner.render(onScanSuccess, onScanFailure);
+    }
+    return () => {
+      if (scanner) {
+        scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+      }
+    };
+  }, [isScanning, participants]); // Re-bind if participants change
 
   const handleExport = () => {
     if (participants.length === 0) return;
@@ -1335,12 +1423,68 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
               <option key={e.id} value={e.id}>{e.title}</option>
             ))}
           </select>
-          <button className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2">
+          <button 
+            onClick={() => {
+              if (!selectedEventId) {
+                alert("Please select an event first");
+                return;
+              }
+              setIsScanning(true);
+            }}
+            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2"
+          >
             <QrCode size={18} />
             <span>Scan QR</span>
           </button>
         </div>
       </div>
+
+      {isScanning && (
+        <div className="fixed inset-0 bg-black z-[100] flex flex-col">
+          {/* Status Overlays */}
+          <AnimatePresence>
+            {scanError && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-red-600/90 z-[110] flex flex-col items-center justify-center text-white p-6 text-center"
+              >
+                <X size={120} className="mb-6" />
+                <h2 className="text-4xl font-black uppercase tracking-widest mb-4">Access Declined</h2>
+                <p className="text-2xl font-medium opacity-90">{scanError}</p>
+              </motion.div>
+            )}
+            {scanSuccess && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-emerald-600/90 z-[110] flex flex-col items-center justify-center text-white p-6 text-center"
+              >
+                <Check size={120} className="mb-6" />
+                <h2 className="text-4xl font-black uppercase tracking-widest mb-4">Access Granted</h2>
+                <p className="text-2xl font-medium opacity-90">{scanSuccess}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="p-6 flex justify-between items-center text-white relative z-[105]">
+            <h3 className="text-xl font-bold">Attendance Scanner</h3>
+            <button onClick={() => setIsScanning(false)} className="p-2 hover:bg-white/10 rounded-full">
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="flex-1 flex flex-col items-center justify-center p-4 relative z-[105]">
+            <div id="reader" className="w-full max-w-md bg-white rounded-2xl overflow-hidden shadow-2xl border-4 border-white/20"></div>
+          </div>
+          
+          <div className="p-8 text-center text-slate-400 text-sm relative z-[105]">
+            Point camera at participant's registration QR code
+          </div>
+        </div>
+      )}
 
       {selectedEventId && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
