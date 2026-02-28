@@ -191,6 +191,49 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+app.post("/api/checkin/self", async (req, res) => {
+  const { event_id, email } = req.body;
+  
+  if (!event_id || !email) {
+    return res.status(400).json({ error: "Missing event_id or email" });
+  }
+
+  try {
+    // 1. Find the participant by email and event_id
+    const participantResult = await db.execute({
+      sql: "SELECT id, name FROM participants WHERE event_id = ? AND email = ?",
+      args: [event_id, email.toLowerCase()]
+    });
+
+    if (participantResult.rows.length === 0) {
+      return res.status(404).json({ error: "No registration found for this email at this event." });
+    }
+
+    const participant = participantResult.rows[0];
+
+    // 2. Check if already checked in
+    const existingResult = await db.execute({
+      sql: "SELECT id FROM attendance WHERE participant_id = ? AND event_id = ?",
+      args: [participant.id, event_id]
+    });
+
+    if (existingResult.rows.length > 0) {
+      return res.status(400).json({ error: "You are already checked in!" });
+    }
+
+    // 3. Insert attendance
+    await db.execute({
+      sql: "INSERT INTO attendance (participant_id, event_id) VALUES (?, ?)",
+      args: [participant.id, event_id]
+    });
+
+    res.json({ success: true, name: participant.name });
+  } catch (error: any) {
+    console.error("Self check-in error:", error);
+    res.status(500).json({ error: "Check-in failed. Please try again." });
+  }
+});
+
 // API Routes (Protected)
 app.get("/api/events", authenticateToken, async (req: any, res) => {
   try {

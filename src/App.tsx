@@ -66,12 +66,18 @@ export default function App() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [publicRegisterId, setPublicRegisterId] = useState<string | null>(null);
+  const [publicCheckInId, setPublicCheckInId] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const registerId = params.get('register');
+    const checkinId = params.get('checkin');
+    
     if (registerId) {
       setPublicRegisterId(registerId);
+    }
+    if (checkinId) {
+      setPublicCheckInId(checkinId);
     }
   }, []);
 
@@ -138,6 +144,13 @@ export default function App() {
       setPublicRegisterId(null);
       window.history.pushState({}, '', window.location.pathname);
     }} />;
+  }
+
+  if (publicCheckInId) {
+    return <PublicCheckInPage eventId={publicCheckInId} onBack={() => {
+      setPublicCheckInId(null);
+      window.history.pushState({}, '', window.location.pathname);
+    }} />
   }
 
   if (!token) {
@@ -328,6 +341,138 @@ export default function App() {
           <ChatbotWindow onClose={() => setIsChatOpen(false)} events={events} />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function PublicCheckInPage({ eventId, onBack }: { eventId: string, onBack: () => void }) {
+  const [event, setEvent] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [email, setEmail] = useState('');
+  const [attendeeName, setAttendeeName] = useState('');
+
+  useEffect(() => {
+    fetch(`/api/events/${eventId}`)
+      .then(res => res.json())
+      .then(data => {
+        setEvent(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, [eventId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/checkin/self', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, event_id: eventId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(true);
+        setAttendeeName(data.name);
+      } else {
+        setError(data.error || 'Check-in failed');
+      }
+    } catch (err) {
+      setError('A connection error occurred');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+    </div>
+  );
+
+  if (!event || event.error) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
+        <X className="w-12 h-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-bold mb-2">Event Not Found</h2>
+        <p className="text-slate-500 mb-6">The event you are looking for does not exist or has been removed.</p>
+        <button onClick={onBack} className="text-indigo-600 font-bold hover:underline">Back to Home</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 flex items-center justify-center">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }} 
+        animate={{ opacity: 1, scale: 1 }} 
+        className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-slate-200"
+      >
+        {success ? (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Check-in Successful!</h2>
+            <p className="text-slate-500 mb-6">Welcome, <strong>{attendeeName}</strong>! You've successfully checked in for <strong>{event.title}</strong>.</p>
+            <button onClick={onBack} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100">
+              Done
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="text-center mb-8">
+              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <CheckCircle size={24} />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">Event Check-in</h2>
+              <p className="text-slate-500 mt-2">Enter your registered email to check in for <strong>{event.title}</strong></p>
+            </div>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">Registered Email</label>
+                <input 
+                  required
+                  type="email"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                />
+              </div>
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+              >
+                {submitting && <Loader2 className="animate-spin" size={20} />}
+                {submitting ? 'Checking in...' : 'Check In Now'}
+              </button>
+              <button 
+                type="button"
+                onClick={onBack}
+                className="w-full py-2 text-slate-400 text-sm font-medium hover:text-slate-600"
+              >
+                Cancel
+              </button>
+            </form>
+          </>
+        )}
+      </motion.div>
     </div>
   );
 }
@@ -1267,9 +1412,8 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
   const [selectedEventId, setSelectedEventId] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [scanSuccess, setScanSuccess] = useState<string | null>(null);
+  const [showCheckInQR, setShowCheckInQR] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const filteredParticipants = participants.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1323,76 +1467,13 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
         setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'attended' } : p));
         return true;
       } else {
-        setScanError(data.error || 'Check-in failed');
         return false;
       }
     } catch (err) {
       console.error(err);
-      setScanError('Connection error during check-in');
       return false;
     }
   };
-
-  async function onScanSuccess(decodedText: string) {
-    try {
-      let data;
-      try {
-        data = JSON.parse(decodedText);
-      } catch (e) {
-        data = { participant_id: parseInt(decodedText) };
-      }
-
-      if (!data.participant_id) throw new Error("Invalid QR Code");
-      
-      const participant = participants.find(p => p.id === data.participant_id);
-      
-      if (!participant) {
-        setScanError(`DECLINED: Not registered for this event`);
-        setScanSuccess(null);
-        setTimeout(() => setScanError(null), 4000);
-        return;
-      }
-
-      if (participant.status === 'attended') {
-        setScanSuccess(`ALREADY PRESENT: ${participant.name}`);
-        setScanError(null);
-        setTimeout(() => setScanSuccess(null), 4000);
-        return;
-      }
-
-      const success = await handleCheckIn(participant.id);
-      if (success) {
-        setScanSuccess(`PASS: Welcome, ${participant.name}!`);
-        setScanError(null);
-        setTimeout(() => setScanSuccess(null), 4000);
-      }
-    } catch (err) {
-      setScanError("DECLINED: Invalid QR code format");
-      setScanSuccess(null);
-      setTimeout(() => setScanError(null), 4000);
-    }
-  }
-
-  function onScanFailure(error: any) {
-    // Silent failure
-  }
-
-  useEffect(() => {
-    let scanner: Html5QrcodeScanner | null = null;
-    if (isScanning) {
-      scanner = new Html5QrcodeScanner("reader", { 
-        fps: 10, 
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0
-      }, false);
-      scanner.render(onScanSuccess, onScanFailure);
-    }
-    return () => {
-      if (scanner) {
-        scanner.clear().catch(error => console.error("Failed to clear scanner", error));
-      }
-    };
-  }, [isScanning, participants]); // Re-bind if participants change
 
   const handleExport = () => {
     if (participants.length === 0) return;
@@ -1429,60 +1510,67 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
                 alert("Please select an event first");
                 return;
               }
-              setIsScanning(true);
+              setShowCheckInQR(true);
             }}
-            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
           >
             <QrCode size={18} />
-            <span>Scan QR</span>
+            <span>Show Check-in QR</span>
           </button>
         </div>
       </div>
 
-      {isScanning && (
-        <div className="fixed inset-0 bg-black z-[100] flex flex-col">
-          {/* Status Overlays */}
-          <AnimatePresence>
-            {scanError && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-red-600/90 z-[110] flex flex-col items-center justify-center text-white p-6 text-center"
-              >
-                <X size={120} className="mb-6" />
-                <h2 className="text-4xl font-black uppercase tracking-widest mb-4">Access Declined</h2>
-                <p className="text-2xl font-medium opacity-90">{scanError}</p>
-              </motion.div>
-            )}
-            {scanSuccess && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-emerald-600/90 z-[110] flex flex-col items-center justify-center text-white p-6 text-center"
-              >
-                <Check size={120} className="mb-6" />
-                <h2 className="text-4xl font-black uppercase tracking-widest mb-4">Access Granted</h2>
-                <p className="text-2xl font-medium opacity-90">{scanSuccess}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {showCheckInQR && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl p-8 w-full max-w-xs shadow-2xl text-center"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold">Attendee Check-in QR</h3>
+              <button onClick={() => setShowCheckInQR(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="bg-slate-50 p-6 rounded-xl flex justify-center mb-6">
+              <QRCodeSVG 
+                value={`${window.location.origin}?checkin=${selectedEventId}`} 
+                size={200} 
+                level="H"
+                includeMargin={true}
+              />
+            </div>
+            <p className="text-sm text-slate-500 mb-6">Attendees can scan this QR code to check themselves in using their registered email.</p>
+            
+            <div className="mb-6">
+              <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 mb-2">
+                <input 
+                  readOnly 
+                  value={`${window.location.origin}?checkin=${selectedEventId}`}
+                  className="bg-transparent text-[10px] text-slate-500 outline-none flex-1 truncate"
+                />
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}?checkin=${selectedEventId}`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+              {copied && <p className="text-[10px] text-emerald-600 font-medium animate-pulse">Link copied to clipboard!</p>}
+            </div>
 
-          <div className="p-6 flex justify-between items-center text-white relative z-[105]">
-            <h3 className="text-xl font-bold">Attendance Scanner</h3>
-            <button onClick={() => setIsScanning(false)} className="p-2 hover:bg-white/10 rounded-full">
-              <X size={24} />
+            <button 
+              onClick={() => { setShowCheckInQR(false); setCopied(false); }}
+              className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold"
+            >
+              Close
             </button>
-          </div>
-          
-          <div className="flex-1 flex flex-col items-center justify-center p-4 relative z-[105]">
-            <div id="reader" className="w-full max-w-md bg-white rounded-2xl overflow-hidden shadow-2xl border-4 border-white/20"></div>
-          </div>
-          
-          <div className="p-8 text-center text-slate-400 text-sm relative z-[105]">
-            Point camera at participant's registration QR code
-          </div>
+          </motion.div>
         </div>
       )}
 
