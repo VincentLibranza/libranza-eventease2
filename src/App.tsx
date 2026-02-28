@@ -210,8 +210,32 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-20 md:pb-0">
+      {/* Mobile Header */}
+      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40 px-4 py-3 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md shadow-indigo-100">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+          <h1 className="text-lg font-bold tracking-tight text-indigo-600">EventEase</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 truncate max-w-[80px]">{user?.name}</span>
+          <button 
+            onClick={handleLogout}
+            className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      </header>
+
+      {/* Sidebar (Desktop) */}
       <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-20 hidden md:block">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-6">
@@ -273,7 +297,7 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="md:ml-64 p-4 md:p-6">
+      <main className="md:ml-64 p-4 md:p-6 pt-20 md:pt-6 pb-24 md:pb-6">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
             <h2 className="text-2xl font-bold capitalize">{activeTab}</h2>
@@ -339,10 +363,44 @@ export default function App() {
         </AnimatePresence>
       </main>
 
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30 px-2 py-2 flex items-center justify-around shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
+        <MobileNavItem 
+          icon={<LayoutDashboard size={20} />} 
+          label="Home" 
+          active={activeTab === 'dashboard'} 
+          onClick={() => setActiveTab('dashboard')} 
+        />
+        <MobileNavItem 
+          icon={<Calendar size={20} />} 
+          label="Events" 
+          active={activeTab === 'events'} 
+          onClick={() => setActiveTab('events')} 
+        />
+        <MobileNavItem 
+          icon={<CheckCircle size={20} />} 
+          label="Attendance" 
+          active={activeTab === 'attendance'} 
+          onClick={() => setActiveTab('attendance')} 
+        />
+        <MobileNavItem 
+          icon={<Plus size={20} />} 
+          label="Register" 
+          active={activeTab === 'register'} 
+          onClick={() => setActiveTab('register')} 
+        />
+        <MobileNavItem 
+          icon={<Brain size={20} />} 
+          label="AI" 
+          active={activeTab === 'ai'} 
+          onClick={() => setActiveTab('ai')} 
+        />
+      </nav>
+
       {/* Chatbot Toggle */}
       <button 
         onClick={() => setIsChatOpen(!isChatOpen)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-50"
+        className="fixed bottom-24 md:bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-50"
       >
         <MessageSquare size={24} />
       </button>
@@ -758,6 +816,24 @@ function AITab({ insights, stats }: { insights: any, stats: Stats | null }) {
   );
 }
 
+function MobileNavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all ${
+        active 
+          ? 'text-indigo-600' 
+          : 'text-slate-400 hover:text-slate-600'
+      }`}
+    >
+      <div className={`${active ? 'scale-110' : 'scale-100'} transition-transform`}>
+        {icon}
+      </div>
+      <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+    </button>
+  );
+}
+
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
   return (
     <button 
@@ -915,7 +991,7 @@ function Dashboard({ stats, events, onAnalyze, onViewEvents }: { stats: Stats | 
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard label="Total Events" value={stats?.totalEvents || 0} icon={<Calendar className="text-blue-600" />} color="bg-blue-50" />
         <StatCard label="Total Participants" value={stats?.totalParticipants || 0} icon={<Users className="text-emerald-600" />} color="bg-emerald-50" />
         <StatCard label="Attendance Rate" value={`${stats?.totalParticipants ? Math.round((stats.totalAttendance / stats.totalParticipants) * 100) : 0}%`} icon={<CheckCircle className="text-amber-600" />} color="bg-amber-50" />
@@ -1040,12 +1116,12 @@ function Dashboard({ stats, events, onAnalyze, onViewEvents }: { stats: Stats | 
 
 function StatCard({ label, value, icon, color }: { label: string, value: string | number, icon: React.ReactNode, color: string }) {
   return (
-    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-      <div className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center mb-3`}>
-        {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 20 }) : icon}
+    <div className="bg-white p-3 md:p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className={`w-8 h-8 md:w-10 md:h-10 ${color} rounded-lg flex items-center justify-center mb-2 md:mb-3`}>
+        {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 18 }) : icon}
       </div>
-      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">{label}</p>
-      <h4 className="text-xl font-bold mt-0.5">{value}</h4>
+      <p className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-wider">{label}</p>
+      <h4 className="text-lg md:text-xl font-bold mt-0.5">{value}</h4>
     </div>
   );
 }
@@ -1724,7 +1800,7 @@ function ChatbotWindow({ onClose, events }: { onClose: () => void, events: Event
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
-      className="fixed bottom-24 right-6 w-80 md:w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden"
+      className="fixed bottom-24 right-6 w-[calc(100vw-48px)] md:w-96 h-[500px] max-h-[calc(100vh-200px)] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden"
     >
       <div className="p-4 bg-indigo-600 text-white flex justify-between items-center">
         <div className="flex items-center gap-2">
