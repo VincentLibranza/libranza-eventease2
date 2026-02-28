@@ -214,7 +214,7 @@ export default function App() {
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-20 hidden md:block">
         <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
+          <div className="flex items-center gap-2 mb-6">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
               <Calendar className="text-white w-5 h-5" />
             </div>
@@ -232,7 +232,7 @@ export default function App() {
             </button>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             <NavItem 
               icon={<LayoutDashboard size={20} />} 
               label="Dashboard" 
@@ -268,8 +268,8 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="md:ml-64 p-4 md:p-8">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      <main className="md:ml-64 p-4 md:p-6">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
             <h2 className="text-2xl font-bold capitalize">{activeTab}</h2>
             <p className="text-slate-500 text-sm">Manage your event ecosystem efficiently.</p>
@@ -650,29 +650,29 @@ function AITab({ insights, stats }: { insights: any, stats: Stats | null }) {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <motion.div 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6"
+          className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4"
         >
           <div className="flex items-center gap-3 text-indigo-600">
-            <TrendingUp size={24} />
-            <h3 className="text-xl font-bold">Trend Analysis</h3>
+            <TrendingUp size={20} />
+            <h3 className="text-lg font-bold">Trend Analysis</h3>
           </div>
-          <p className="text-slate-600 leading-relaxed">
+          <p className="text-slate-600 leading-relaxed text-sm">
             {insights.trends}
           </p>
           
-          <div className="space-y-4">
-            <h4 className="font-bold text-slate-900 flex items-center gap-2">
-              <Users size={18} className="text-indigo-500" />
+          <div className="space-y-3">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+              <Users size={16} className="text-indigo-500" />
               Most Active Departments
             </h4>
             <div className="flex flex-wrap gap-2">
               {insights.activeDepartments.map((dept: string, i: number) => (
-                <span key={i} className="px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-sm font-medium border border-slate-100">
+                <span key={i} className="px-3 py-1 bg-slate-50 text-slate-700 rounded-lg text-xs font-medium border border-slate-100">
                   {dept}
                 </span>
               ))}
@@ -683,22 +683,22 @@ function AITab({ insights, stats }: { insights: any, stats: Stats | null }) {
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="bg-indigo-600 p-8 rounded-3xl text-white shadow-xl shadow-indigo-100 space-y-6"
+          className="bg-indigo-600 p-6 rounded-3xl text-white shadow-xl shadow-indigo-100 space-y-4"
         >
           <div className="flex items-center gap-3">
-            <Brain size={24} />
-            <h3 className="text-xl font-bold">AI Recommendations</h3>
+            <Brain size={20} />
+            <h3 className="text-lg font-bold">AI Recommendations</h3>
           </div>
-          <ul className="space-y-4">
+          <ul className="space-y-2">
             {insights.recommendations.map((rec: string, i: number) => (
               <motion.li 
                 key={i}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className="flex gap-3 bg-white/10 p-4 rounded-2xl border border-white/10"
+                className="flex gap-3 bg-white/10 p-3 rounded-xl border border-white/10 text-sm"
               >
-                <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold">
                   {i + 1}
                 </div>
                 <span className="text-indigo-50">{rec}</span>
@@ -708,12 +708,12 @@ function AITab({ insights, stats }: { insights: any, stats: Stats | null }) {
         </motion.div>
       </div>
 
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-        <h3 className="text-xl font-bold mb-8 flex items-center gap-3">
-          <BarChart3 size={24} className="text-indigo-600" />
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-3">
+          <BarChart3 size={20} className="text-indigo-600" />
           Attendance Performance
         </h3>
-        <div className="h-[400px] w-full">
+        <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stats?.eventStats}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
@@ -884,29 +884,29 @@ function Dashboard({ stats, events, onAnalyze }: { stats: Stats | null, events: 
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Events" value={stats?.totalEvents || 0} icon={<Calendar className="text-blue-600" />} color="bg-blue-50" />
         <StatCard label="Total Participants" value={stats?.totalParticipants || 0} icon={<Users className="text-emerald-600" />} color="bg-emerald-50" />
         <StatCard label="Attendance Rate" value={`${stats?.totalParticipants ? Math.round((stats.totalAttendance / stats.totalParticipants) * 100) : 0}%`} icon={<CheckCircle className="text-amber-600" />} color="bg-amber-50" />
         <StatCard label="Active Depts" value={stats?.departmentStats.length || 0} icon={<TrendingUp className="text-indigo-600" />} color="bg-indigo-50" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-lg">Department Distribution</h3>
-              <BarChart3 size={20} className="text-slate-400" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-base">Department Distribution</h3>
+              <BarChart3 size={18} className="text-slate-400" />
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {stats?.departmentStats.slice(0, 5).map((dept, i) => (
-                <div key={i} className="space-y-2">
-                  <div className="flex justify-between text-sm">
+                <div key={i} className="space-y-1">
+                  <div className="flex justify-between text-xs">
                     <span className="font-medium text-slate-700">{dept.department}</span>
                     <span className="text-slate-500">{dept.count} participants</span>
                   </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${(dept.count / (stats.totalParticipants || 1)) * 100}%` }}
@@ -916,86 +916,86 @@ function Dashboard({ stats, events, onAnalyze }: { stats: Stats | null, events: 
                 </div>
               ))}
               {(!stats?.departmentStats || stats.departmentStats.length === 0) && (
-                <p className="text-center text-slate-400 py-8">No data available yet.</p>
+                <p className="text-center text-slate-400 py-4">No data available yet.</p>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-lg shadow-indigo-100 relative overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-indigo-600 rounded-2xl p-4 text-white shadow-lg shadow-indigo-100 relative overflow-hidden">
               <div className="relative z-10">
-                <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
-                  <TrendingUp size={20} />
+                <h3 className="text-base font-bold mb-1 flex items-center gap-2">
+                  <TrendingUp size={18} />
                   Attendance Prediction
                 </h3>
-                <p className="text-indigo-100 text-xs mb-6">
-                  AI-powered insights for your next event based on historical data.
+                <p className="text-indigo-100 text-[10px] mb-4">
+                  AI-powered insights for your next event.
                 </p>
                 
                 {prediction ? (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20"
+                    className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/20"
                   >
-                    <div className="flex items-end gap-2 mb-1">
-                      <span className="text-2xl font-bold">{prediction.predictedCount}</span>
-                      <span className="text-indigo-200 text-xs pb-1">Predicted</span>
+                    <div className="flex items-end gap-2 mb-0.5">
+                      <span className="text-xl font-bold">{prediction.predictedCount}</span>
+                      <span className="text-indigo-200 text-[10px] pb-0.5">Predicted</span>
                     </div>
-                    <p className="text-xs text-indigo-50 italic line-clamp-2">"{prediction.reasoning}"</p>
+                    <p className="text-[10px] text-indigo-50 italic line-clamp-1">"{prediction.reasoning}"</p>
                   </motion.div>
                 ) : (
                   <button 
                     onClick={handlePredict}
                     disabled={isPredicting || events.length === 0}
-                    className="w-full py-3 bg-white text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full py-2 bg-white text-indigo-600 rounded-lg font-bold hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                   >
-                    {isPredicting ? <Loader2 className="animate-spin" size={18} /> : <TrendingUp size={18} />}
+                    {isPredicting ? <Loader2 className="animate-spin" size={16} /> : <TrendingUp size={16} />}
                     Predict Next
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
               <div>
-                <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-slate-900">
-                  <Brain size={20} className="text-indigo-600" />
+                <h3 className="text-base font-bold mb-1 flex items-center gap-2 text-slate-900">
+                  <Brain size={18} className="text-indigo-600" />
                   Deep Trend Analysis
                 </h3>
-                <p className="text-slate-500 text-xs mb-6">
-                  Analyze all participant data to find hidden patterns and recommendations.
+                <p className="text-slate-500 text-[10px] mb-4">
+                  Analyze all participant data to find hidden patterns.
                 </p>
               </div>
               <button 
                 onClick={onAnalyze}
-                className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-2 bg-indigo-50 text-indigo-600 rounded-lg font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 text-sm"
               >
-                <BarChart3 size={18} />
+                <BarChart3 size={16} />
                 Full AI Report
               </button>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <h3 className="font-bold text-lg mb-6">Upcoming Events</h3>
-          <div className="space-y-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <h3 className="font-bold text-base mb-4">Upcoming Events</h3>
+          <div className="space-y-2">
             {events.slice(0, 5).map((event) => (
-              <div key={event.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group">
-                <div className="w-12 h-12 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                  <span className="text-[10px] font-bold uppercase">{new Date(event.date).toLocaleString('default', { month: 'short' })}</span>
-                  <span className="text-lg font-bold leading-none">{new Date(event.date).getDate()}</span>
+              <div key={event.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group">
+                <div className="w-10 h-10 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                  <span className="text-[8px] font-bold uppercase">{new Date(event.date).toLocaleString('default', { month: 'short' })}</span>
+                  <span className="text-base font-bold leading-none">{new Date(event.date).getDate()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-sm truncate">{event.title}</h4>
-                  <p className="text-[10px] text-slate-500 truncate">{event.location}</p>
+                  <h4 className="font-semibold text-xs truncate">{event.title}</h4>
+                  <p className="text-[9px] text-slate-500 truncate">{event.location}</p>
                 </div>
-                <ChevronRight size={14} className="text-slate-300" />
+                <ChevronRight size={12} className="text-slate-300" />
               </div>
             ))}
             {events.length === 0 && (
-              <p className="text-center text-slate-400 py-8">No events scheduled.</p>
+              <p className="text-center text-slate-400 py-4 text-xs">No events scheduled.</p>
             )}
           </div>
         </div>
@@ -1006,12 +1006,12 @@ function Dashboard({ stats, events, onAnalyze }: { stats: Stats | null, events: 
 
 function StatCard({ label, value, icon, color }: { label: string, value: string | number, icon: React.ReactNode, color: string }) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-      <div className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center mb-4`}>
-        {icon}
+    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center mb-3`}>
+        {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 20 }) : icon}
       </div>
-      <p className="text-slate-500 text-sm font-medium">{label}</p>
-      <h4 className="text-2xl font-bold mt-1">{value}</h4>
+      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">{label}</p>
+      <h4 className="text-xl font-bold mt-0.5">{value}</h4>
     </div>
   );
 }
@@ -1235,7 +1235,7 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredEvents.map(event => (
           <div key={event.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group hover:border-indigo-300 transition-all">
-            <div className="h-32 bg-slate-100 relative overflow-hidden">
+            <div className="h-24 bg-slate-100 relative overflow-hidden">
               <img 
                 src={`https://picsum.photos/seed/${event.id}/400/200`} 
                 alt={event.title}
@@ -1265,10 +1265,10 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
                 </div>
               </div>
             </div>
-            <div className="p-6">
-              <h4 className="text-lg font-bold mb-2 group-hover:text-indigo-600 transition-colors">{event.title}</h4>
-              <p className="text-slate-500 text-sm mb-4 line-clamp-2">{event.description || 'No description provided.'}</p>
-              <div className="flex items-center justify-between text-sm text-slate-400">
+            <div className="p-4">
+              <h4 className="text-base font-bold mb-1 group-hover:text-indigo-600 transition-colors">{event.title}</h4>
+              <p className="text-slate-500 text-xs mb-3 line-clamp-2">{event.description || 'No description provided.'}</p>
+              <div className="flex items-center justify-between text-xs text-slate-400">
                 <div className="flex items-center gap-2">
                   <Calendar size={14} />
                   <span>{new Date(event.date).toLocaleDateString()}</span>
