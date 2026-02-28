@@ -317,7 +317,14 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'dashboard' && <Dashboard stats={stats} events={events} onAnalyze={handleAnalyzeTrends} />}
+              {activeTab === 'dashboard' && (
+                <Dashboard 
+                  stats={stats} 
+                  events={events} 
+                  onAnalyze={handleAnalyzeTrends} 
+                  onViewEvents={() => setActiveTab('events')}
+                />
+              )}
               {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} searchQuery={searchQuery} />}
               {activeTab === 'register' && <RegistrationForm events={events} onRefresh={fetchData} />}
               {activeTab === 'attendance' && <AttendanceTracker events={events} onRefresh={fetchData} searchQuery={searchQuery} />}
@@ -865,7 +872,7 @@ function AuthPage({ onLogin }: { onLogin: (user: any, token: string) => void }) 
   );
 }
 
-function Dashboard({ stats, events, onAnalyze }: { stats: Stats | null, events: Event[], onAnalyze: () => void }) {
+function Dashboard({ stats, events, onAnalyze, onViewEvents }: { stats: Stats | null, events: Event[], onAnalyze: () => void, onViewEvents: () => void }) {
   const [prediction, setPrediction] = useState<{ predictedCount: number, reasoning: string } | null>(null);
   const [isPredicting, setIsPredicting] = useState(false);
 
@@ -982,7 +989,11 @@ function Dashboard({ stats, events, onAnalyze }: { stats: Stats | null, events: 
           <h3 className="font-bold text-base mb-4">Upcoming Events</h3>
           <div className="space-y-2">
             {events.slice(0, 5).map((event) => (
-              <div key={event.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group">
+              <div 
+                key={event.id} 
+                onClick={onViewEvents}
+                className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group"
+              >
                 <div className="w-10 h-10 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
                   <span className="text-[8px] font-bold uppercase">{new Date(event.date).toLocaleString('default', { month: 'short' })}</span>
                   <span className="text-base font-bold leading-none">{new Date(event.date).getDate()}</span>
