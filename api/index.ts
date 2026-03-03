@@ -349,23 +349,34 @@ app.get("/api/participants", authenticateToken, async (req: any, res) => {
 });
 
 app.delete("/api/events/:id", authenticateToken, async (req: any, res) => {
+  const eventId = Number(req.params.id);
+  const userId = req.user.id;
+  
+  console.log(`Attempting to delete event ${eventId} for user ${userId}`);
+  
   try {
     // Verify ownership
     const event = await db.execute({
       sql: "SELECT id FROM events WHERE id = ? AND user_id = ?",
-      args: [req.params.id, req.user.id]
+      args: [eventId, userId]
     });
-    if (event.rows.length === 0) return res.status(403).json({ error: "Unauthorized" });
+    
+    if (event.rows.length === 0) {
+      console.log(`Delete failed: Event ${eventId} not found or not owned by user ${userId}`);
+      return res.status(403).json({ error: "Unauthorized or event not found" });
+    }
 
     // With ON DELETE CASCADE, we only need to delete the event
-    await db.execute({
+    const result = await db.execute({
       sql: "DELETE FROM events WHERE id = ?",
-      args: [req.params.id]
+      args: [eventId]
     });
+    
+    console.log(`Event ${eventId} deleted successfully. Rows affected:`, result.rowsAffected);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Delete error:", error);
-    res.status(500).json({ error: "Failed to delete event" });
+    res.status(500).json({ error: `Failed to delete event: ${error.message}` });
   }
 });
 

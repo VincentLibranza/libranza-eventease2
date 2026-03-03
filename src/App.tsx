@@ -199,20 +199,27 @@ export default function App() {
   const handleDeleteEvent = async (id: number) => {
     if (!confirm('Are you sure you want to delete this event? All registrations will be lost.')) return;
     try {
-      await fetch(`/api/events/${id}`, { 
+      const res = await fetch(`/api/events/${id}`, { 
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      fetchData();
+      
+      if (res.ok) {
+        fetchData();
+      } else {
+        const data = await res.json();
+        alert(`Failed to delete event: ${data.error || 'Unknown error'}`);
+      }
     } catch (error) {
       console.error('Delete failed:', error);
+      alert('A connection error occurred while trying to delete the event.');
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-20 md:pb-0">
+    <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans pb-20 md:pb-0">
       {/* Mobile Header */}
-      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40 px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40 px-4 py-3 pt-safe flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md shadow-indigo-100">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -364,7 +371,7 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30 px-2 py-2 flex items-center justify-around shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30 px-2 py-2 pb-safe flex items-center justify-around shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
         <MobileNavItem 
           icon={<LayoutDashboard size={20} />} 
           label="Home" 
