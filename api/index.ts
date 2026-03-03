@@ -366,13 +366,23 @@ app.delete("/api/events/:id", authenticateToken, async (req: any, res) => {
       return res.status(403).json({ error: "Unauthorized or event not found" });
     }
 
-    // With ON DELETE CASCADE, we only need to delete the event
-    const result = await db.execute({
-      sql: "DELETE FROM events WHERE id = ?",
-      args: [eventId]
-    });
+    // Manually delete related records to avoid constraint issues if cascade is not active
+    await db.batch([
+      {
+        sql: "DELETE FROM attendance WHERE event_id = ?",
+        args: [eventId]
+      },
+      {
+        sql: "DELETE FROM participants WHERE event_id = ?",
+        args: [eventId]
+      },
+      {
+        sql: "DELETE FROM events WHERE id = ?",
+        args: [eventId]
+      }
+    ], "write");
     
-    console.log(`Event ${eventId} deleted successfully. Rows affected:`, result.rowsAffected);
+    console.log(`Event ${eventId} and all related records deleted successfully.`);
     res.json({ success: true });
   } catch (error: any) {
     console.error("Delete error:", error);
