@@ -1141,7 +1141,7 @@ function StatCard({ label, value, icon, color }: { label: string, value: string 
   );
 }
 
-function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Event[], onRefresh: () => void, onDelete: (id: number) => void, searchQuery: string }) {
+function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Event[], onRefresh: (silent?: boolean) => void, onDelete: (id: number) => void, searchQuery: string }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ title: '', description: '', date: '', location: '', capacity: 100 });
   const [qrEvent, setQrEvent] = useState<Event | null>(null);
@@ -1192,7 +1192,7 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
 
       setFormData({ title: '', description: '', date: '', location: '', capacity: 100 });
       setShowForm(false);
-      onRefresh();
+      onRefresh(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -1411,7 +1411,7 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
   );
 }
 
-function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: () => void }) {
+function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (silent?: boolean) => void }) {
   const [formData, setFormData] = useState({ event_id: '', name: '', email: '', department: '' });
   const [successData, setSuccessData] = useState<{ id: number, event_title: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1441,7 +1441,7 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
         const event = events.find(e => e.id === parseInt(formData.event_id));
         setSuccessData({ id: data.id, event_title: event?.title || 'Event' });
         setFormData({ event_id: '', name: '', email: '', department: '' });
-        onRefresh();
+        onRefresh(true);
       } else {
         setError(data.error || 'Registration failed. Please try again.');
       }
