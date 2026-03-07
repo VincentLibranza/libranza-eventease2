@@ -64,6 +64,9 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createFormData, setCreateFormData] = useState({ title: '', description: '', date: '', location: '', capacity: 100 });
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [publicRegisterId, setPublicRegisterId] = useState<string | null>(null);
   const [publicCheckInId, setPublicCheckInId] = useState<string | null>(null);
@@ -137,6 +140,49 @@ export default function App() {
     setToken(null);
     localStorage.removeItem('eventease_user');
     localStorage.removeItem('eventease_token');
+  };
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreating(true);
+    setCreateError('');
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(createFormData)
+      });
+      
+      if (res.status === 401) {
+        handleLogout();
+        window.location.reload();
+        return;
+      }
+
+      const contentType = res.headers.get("content-type");
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text.slice(0, 100) || 'Server returned non-JSON response');
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create event');
+      }
+
+      setCreateFormData({ title: '', description: '', date: '', location: '', capacity: 100 });
+      setShowCreateModal(false);
+      fetchData(true);
+    } catch (err: any) {
+      setCreateError(err.message);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   if (publicRegisterId) {
@@ -323,14 +369,15 @@ export default function App() {
                 />
               </div>
             )}
-            <button 
-              onClick={handleAnalyzeTrends}
-              disabled={isAnalyzing}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-medium hover:bg-indigo-100 transition-colors disabled:opacity-50"
-            >
-              {isAnalyzing ? <Loader2 className="animate-spin" size={18} /> : <Brain size={18} />}
-              <span className="hidden sm:inline">AI Insights</span>
-            </button>
+            {activeTab !== 'events' && (
+              <button 
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-all shadow-sm"
+              >
+                <Plus size={18} />
+                <span className="hidden sm:inline">Create Event</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -361,10 +408,10 @@ export default function App() {
                   onViewEvents={() => setActiveTab('events')}
                 />
               )}
-              {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} searchQuery={searchQuery} />}
+              {activeTab === 'events' && <EventsList events={events} onRefresh={fetchData} onDelete={handleDeleteEvent} searchQuery={searchQuery} onCreateClick={() => setShowCreateModal(true)} />}
               {activeTab === 'register' && <RegistrationForm events={events} onRefresh={fetchData} />}
               {activeTab === 'attendance' && <AttendanceTracker events={events} onRefresh={fetchData} searchQuery={searchQuery} />}
-              {activeTab === 'ai' && <AITab insights={aiInsights} stats={stats} />}
+              {activeTab === 'ai' && <AITab insights={aiInsights} stats={stats} onAnalyze={handleAnalyzeTrends} isAnalyzing={isAnalyzing} />}
             </motion.div>
           )}
         </AnimatePresence>
@@ -416,6 +463,106 @@ export default function App() {
       <AnimatePresence>
         {isChatOpen && (
           <ChatbotWindow onClose={() => setIsChatOpen(false)} events={events} />
+        )}
+      </AnimatePresence>
+
+      {/* Global Create Event Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-bold">Create New Event</h3>
+                <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              {createError && (
+                <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-xs border border-red-100">
+                  {createError}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateEvent} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Event Title</label>
+                  <input 
+                    required
+                    type="text" 
+                    placeholder="e.g. Tech Summit 2024"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={createFormData.title}
+                    onChange={e => setCreateFormData({...createFormData, title: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                  <textarea 
+                    placeholder="What is this event about?"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"
+                    value={createFormData.description}
+                    onChange={e => setCreateFormData({...createFormData, description: e.target.value})}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label>
+                    <input 
+                      required
+                      type="date" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={createFormData.date}
+                      onChange={e => setCreateFormData({...createFormData, date: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Capacity</label>
+                    <input 
+                      required
+                      type="number" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={createFormData.capacity}
+                      onChange={e => setCreateFormData({...createFormData, capacity: parseInt(e.target.value)})}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Location</label>
+                  <input 
+                    required
+                    type="text" 
+                    placeholder="e.g. Grand Ballroom"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={createFormData.location}
+                    onChange={e => setCreateFormData({...createFormData, location: e.target.value})}
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  disabled={isCreating}
+                  className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-70"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={20} />
+                      Create Event
+                    </>
+                  )}
+                </button>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
@@ -729,20 +876,36 @@ function PublicRegistrationPage({ eventId, onBack }: { eventId: string, onBack: 
   );
 }
 
-function AITab({ insights, stats }: { insights: any, stats: Stats | null }) {
+function AITab({ insights, stats, onAnalyze, isAnalyzing }: { insights: any, stats: Stats | null, onAnalyze: () => void, isAnalyzing: boolean }) {
   if (!insights) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-        <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center text-indigo-600 mb-4 shadow-inner">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path>
-            <path d="M12 6a6 6 0 1 0 6 6 6 6 0 0 0-6-6zm0 10a4 4 0 1 1 4-4 4 4 0 0 1-4 4z"></path>
-          </svg>
+      <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+        <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center text-indigo-600 mb-2 shadow-inner">
+          {isAnalyzing ? <Loader2 className="animate-spin" size={40} /> : <Brain size={40} />}
         </div>
-        <h3 className="text-xl font-bold text-slate-900">AI Insights Not Generated</h3>
-        <p className="text-slate-500 max-w-md">
-          Click the "AI Insights" button in the header to analyze your event data and generate trends.
-        </p>
+        <div className="space-y-2">
+          <h3 className="text-2xl font-bold text-slate-900">AI Insights Not Generated</h3>
+          <p className="text-slate-500 max-w-md mx-auto">
+            Analyze your event data to discover trends, department activity, and get smart recommendations for future planning.
+          </p>
+        </div>
+        <button 
+          onClick={onAnalyze}
+          disabled={isAnalyzing}
+          className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-3 group disabled:opacity-70"
+        >
+          {isAnalyzing ? (
+            <>
+              <Loader2 className="animate-spin" size={20} />
+              <span>Analyzing Data...</span>
+            </>
+          ) : (
+            <>
+              <Brain size={20} className="group-hover:rotate-12 transition-transform" />
+              <span>Generate AI Insights</span>
+            </>
+          )}
+        </button>
       </div>
     );
   }
@@ -1141,12 +1304,8 @@ function StatCard({ label, value, icon, color }: { label: string, value: string 
   );
 }
 
-function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Event[], onRefresh: (silent?: boolean) => void, onDelete: (id: number) => void, searchQuery: string }) {
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ title: '', description: '', date: '', location: '', capacity: 100 });
+function EventsList({ events, onRefresh, onDelete, searchQuery, onCreateClick }: { events: Event[], onRefresh: (silent?: boolean) => void, onDelete: (id: number) => void, searchQuery: string, onCreateClick: () => void }) {
   const [qrEvent, setQrEvent] = useState<Event | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
   const filteredEvents = events.filter(e => 
@@ -1155,152 +1314,18 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
     e.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-    try {
-      const token = localStorage.getItem('eventease_token');
-      const res = await fetch('/api/events', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
-      
-      if (res.status === 401) {
-        localStorage.removeItem('eventease_token');
-        localStorage.removeItem('eventease_user');
-        window.location.reload(); // Force a reload to show login page
-        return;
-      }
-
-      const contentType = res.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text.slice(0, 100) || 'Server returned non-JSON response');
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create event');
-      }
-
-      setFormData({ title: '', description: '', date: '', location: '', capacity: 100 });
-      setShowForm(false);
-      onRefresh(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-bold">All Events</h3>
         <button 
-          onClick={() => setShowForm(true)}
+          onClick={onCreateClick}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
         >
           <Plus size={18} />
           <span>Create Event</span>
         </button>
       </div>
-
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold">Create New Event</h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={24} />
-              </button>
-            </div>
-            
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-xs border border-red-100">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Event Title</label>
-                <input 
-                  required
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={formData.title}
-                  onChange={e => setFormData({...formData, title: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea 
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-24"
-                  value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
-                  placeholder="Tell us about the event..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                <input 
-                  required
-                  type="datetime-local"
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={formData.date}
-                  onChange={e => setFormData({...formData, date: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
-                <input 
-                  required
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={formData.location}
-                  onChange={e => setFormData({...formData, location: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Capacity</label>
-                <input 
-                  type="number"
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={formData.capacity}
-                  onChange={e => setFormData({...formData, capacity: parseInt(e.target.value)})}
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button 
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting && <Loader2 className="animate-spin" size={18} />}
-                  {isSubmitting ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
 
       {qrEvent && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
