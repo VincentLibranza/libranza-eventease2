@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -464,6 +465,91 @@ app.get("/api/stats", authenticateToken, async (req: any, res) => {
   } catch (error) {
     console.error("Stats error:", error);
     res.status(500).json({ error: "Failed to fetch statistics" });
+  }
+});
+
+app.post("/api/ai/analyze", authenticateToken, async (req: any, res) => {
+  const { stats } = req.body;
+  if (!stats) return res.status(400).json({ error: "Missing stats" });
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "AI service not configured (API key missing)" });
+  }
+
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const prompt = `Analyze the following event and participant statistics: ${JSON.stringify(stats)}. 
+    Identify the most active departments, trends in attendance over time, and provide 3 actionable recommendations for future events.
+    
+    CRITICAL INSTRUCTIONS:
+    1. ONLY use the provided data. Do NOT use any external knowledge or hallucinate departments.
+    2. If the data is empty (0 events, 0 participants), state that there is no data to analyze yet and provide generic advice on how to start using the platform.
+    3. Ensure the activeDepartments list ONLY contains departments present in the provided departmentStats.
+    4. If no departments are active, return an empty array for activeDepartments.`;
+
+    const response = await genAI.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            activeDepartments: { 
+              type: Type.ARRAY, 
+              items: { type: Type.STRING } 
+            },
+            trends: { type: Type.STRING },
+            recommendations: { 
+              type: Type.ARRAY, 
+              items: { type: Type.STRING } 
+            }
+          },
+          required: ["activeDepartments", "trends", "recommendations"]
+        }
+      }
+    });
+
+    res.json(JSON.parse(response.text || "{}"));
+  } catch (error: any) {
+    console.error("AI Analysis error:", error);
+    res.status(500).json({ error: `AI Analysis failed: ${error.message}` });
+  }
+});
+
+app.post("/api/ai/predict", authenticateToken, async (req: any, res) => {
+  const { eventDetails, pastEvents } = req.body;
+  
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "AI service not configured" });
+  }
+
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const prompt = `Based on the following past event data: ${JSON.stringify(pastEvents)}. Predict the attendance for this new event: ${JSON.stringify(eventDetails)}. Provide a predicted number and a brief reasoning.`;
+
+    const response = await genAI.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            predictedCount: { type: Type.NUMBER },
+            reasoning: { type: Type.STRING }
+          },
+          required: ["predictedCount", "reasoning"]
+        }
+      }
+    });
+
+    res.json(JSON.parse(response.text || "{}"));
+  } catch (error: any) {
+    console.error("AI Prediction error:", error);
+    res.status(500).json({ error: `AI Prediction failed: ${error.message}` });
   }
 });
 

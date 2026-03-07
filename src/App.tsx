@@ -6,7 +6,6 @@ import {
   CheckCircle, 
   Plus, 
   Search, 
-  MessageSquare, 
   TrendingUp,
   ChevronRight,
   QrCode,
@@ -27,7 +26,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Event, Participant, Stats } from './types';
-import { getChatbotResponse, predictAttendance, analyzeTrends } from './services/geminiService';
+import { predictAttendance, analyzeTrends } from './services/geminiService';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import jsPDF from 'jspdf';
@@ -59,7 +58,7 @@ export default function App() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+
   const [aiInsights, setAiInsights] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -131,6 +130,7 @@ export default function App() {
   const handleLogin = (userData: any, userToken: string) => {
     setUser(userData);
     setToken(userToken);
+    setAiInsights(null);
     localStorage.setItem('eventease_user', JSON.stringify(userData));
     localStorage.setItem('eventease_token', userToken);
   };
@@ -138,6 +138,7 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     setToken(null);
+    setAiInsights(null);
     localStorage.removeItem('eventease_user');
     localStorage.removeItem('eventease_token');
   };
@@ -235,8 +236,9 @@ export default function App() {
       const insights = await analyzeTrends(stats);
       setAiInsights(insights);
       setActiveTab('ai');
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI Analysis failed:', error);
+      alert(`AI Analysis failed: ${error.message || 'Please try again later.'}`);
     } finally {
       setIsAnalyzing(false);
     }
@@ -450,21 +452,6 @@ export default function App() {
           onClick={() => setActiveTab('ai')} 
         />
       </nav>
-
-      {/* Chatbot Toggle */}
-      <button 
-        onClick={() => setIsChatOpen(!isChatOpen)}
-        className="fixed bottom-24 md:bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-50"
-      >
-        <MessageSquare size={24} />
-      </button>
-
-      {/* Chatbot Window */}
-      <AnimatePresence>
-        {isChatOpen && (
-          <ChatbotWindow onClose={() => setIsChatOpen(false)} events={events} />
-        )}
-      </AnimatePresence>
 
       {/* Global Create Event Modal */}
       <AnimatePresence>
@@ -1846,87 +1833,4 @@ function AttendanceTracker({ events, onRefresh, searchQuery }: { events: Event[]
   );
 }
 
-function ChatbotWindow({ onClose, events }: { onClose: () => void, events: Event[] }) {
-  const [messages, setMessages] = useState<{ role: 'user' | 'bot', text: string }[]>([
-    { role: 'bot', text: 'Hello! I am EventEase Assistant. How can I help you today?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    
-    const userMsg = input;
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
-    setIsTyping(true);
-
-    try {
-      const context = `Upcoming events: ${events.map(e => `${e.title} on ${e.date}`).join(', ')}`;
-      const botResponse = await getChatbotResponse(userMsg, context);
-      setMessages(prev => [...prev, { role: 'bot', text: botResponse || "I'm sorry, I couldn't process that." }]);
-    } catch (error) {
-      console.error('Chat error:', error);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 20, scale: 0.95 }}
-      className="fixed bottom-24 right-6 w-[calc(100vw-48px)] md:w-96 h-[500px] max-h-[calc(100vh-200px)] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden"
-    >
-      <div className="p-4 bg-indigo-600 text-white flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <MessageSquare size={20} />
-          <span className="font-bold">EventEase AI</span>
-        </div>
-        <button onClick={onClose} className="hover:bg-white/20 p-1 rounded transition-colors">
-          <ChevronRight className="rotate-90" size={20} />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-              msg.role === 'user' 
-                ? 'bg-indigo-600 text-white rounded-tr-none' 
-                : 'bg-slate-100 text-slate-800 rounded-tl-none'
-            }`}>
-              {msg.text}
-            </div>
-          </div>
-        ))}
-        {isTyping && (
-          <div className="flex justify-start">
-            <div className="bg-slate-100 p-3 rounded-2xl rounded-tl-none flex gap-1">
-              <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" />
-              <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-              <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="p-4 border-t border-slate-100 flex gap-2">
-        <input 
-          className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-          placeholder="Type a message..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyPress={e => e.key === 'Enter' && handleSend()}
-        />
-        <button 
-          onClick={handleSend}
-          className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
-    </motion.div>
-  );
-}
