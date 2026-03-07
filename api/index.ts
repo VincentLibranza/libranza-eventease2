@@ -38,9 +38,12 @@ try {
 let isDbInitialized = false;
 async function ensureDb() {
   if (isDbInitialized) return;
-  if (!db) throw new Error("Database client not initialized");
+  if (!db) {
+    console.error("Database client not initialized during ensureDb");
+    throw new Error("Database client not initialized");
+  }
   
-  console.log("Initializing database...");
+  console.log(`Initializing database... URL: ${finalUrl.split('@').pop()}`); // Hide credentials
   try {
     await db.execute("PRAGMA foreign_keys = ON");
 
@@ -146,7 +149,8 @@ const authenticateToken = async (req: any, res: any, next: any) => {
 app.get("/api/health", async (req, res) => {
   try {
     await db.execute("SELECT 1");
-    res.json({ status: "ok", database: "connected", isVercel });
+    const dbType = dbUrl ? "Turso" : "Local SQLite";
+    res.json({ status: "ok", database: "connected", dbType, isVercel });
   } catch (error: any) {
     res.status(500).json({ status: "error", message: error.message });
   }
@@ -289,15 +293,17 @@ app.get("/api/events/:id", async (req, res) => {
 
 app.post("/api/register", async (req, res) => {
   const { event_id, name, email, department } = req.body;
+  console.log(`Registration attempt for event ${event_id}: ${email}`);
   try {
     const result = await db.execute({
       sql: "INSERT INTO participants (event_id, name, email, department) VALUES (?, ?, ?, ?)",
       args: [event_id, name, email, department]
     });
+    console.log(`Registration successful for ${email}, ID: ${result.lastInsertRowid}`);
     res.json({ id: Number(result.lastInsertRowid) });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
-    res.status(500).json({ error: "Registration failed" });
+    res.status(500).json({ error: `Registration failed: ${error.message}` });
   }
 });
 

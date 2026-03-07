@@ -590,10 +590,18 @@ function PublicRegistrationPage({ eventId, onBack }: { eventId: string, onBack: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, event_id: eventId })
       });
+      
       if (res.ok) {
         setSuccess(true);
       } else {
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          throw new Error(`Server error: ${text.substring(0, 100)}`);
+        }
         setError(data.error || 'Registration failed');
       }
     } catch (err) {
@@ -1406,20 +1414,42 @@ function EventsList({ events, onRefresh, onDelete, searchQuery }: { events: Even
 function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: () => void }) {
   const [formData, setFormData] = useState({ event_id: '', name: '', email: '', department: '' });
   const [successData, setSuccessData] = useState<{ id: number, event_title: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const event = events.find(e => e.id === parseInt(formData.event_id));
-      setSuccessData({ id: data.id, event_title: event?.title || 'Event' });
-      setFormData({ event_id: '', name: '', email: '', department: '' });
-      onRefresh();
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Server error: ${text.substring(0, 100)}`);
+      }
+      
+      if (res.ok) {
+        const event = events.find(e => e.id === parseInt(formData.event_id));
+        setSuccessData({ id: data.id, event_title: event?.title || 'Event' });
+        setFormData({ event_id: '', name: '', email: '', department: '' });
+        onRefresh();
+      } else {
+        setError(data.error || 'Registration failed. Please try again.');
+      }
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('A connection error occurred. Please check your internet and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1470,6 +1500,13 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
         <h3 className="text-2xl font-bold mb-2">Event Registration</h3>
         <p className="text-slate-500">Fill out the form below to register for an upcoming event.</p>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100 flex items-center gap-2">
+          <X size={18} />
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
@@ -1524,9 +1561,17 @@ function RegistrationForm({ events, onRefresh }: { events: Event[], onRefresh: (
 
         <button 
           type="submit"
-          className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+          disabled={isSubmitting}
+          className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-70"
         >
-          Register Now
+          {isSubmitting ? (
+            <>
+              <Loader2 className="animate-spin" size={20} />
+              Registering...
+            </>
+          ) : (
+            'Register Now'
+          )}
         </button>
       </form>
     </div>
